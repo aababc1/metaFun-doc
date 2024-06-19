@@ -8,6 +8,8 @@ Welcome to metaFun's documentation!
 This is the ~ document for metaFun. 
 metaFun is  comprised of seven workflows 
 
+Here is **shiny** (( new note. )) nenenwenwes
+
 # use numbering requires  # 
 italic bold requires one and two asterisk *italic * **bold**
 
