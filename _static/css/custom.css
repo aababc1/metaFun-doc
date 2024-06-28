@@ -1,0 +1,9 @@
+.tight-table td{
+    white-space: normal !important;
+}
+
+.highlight pre {
+    line-height: 1.5; /* 필요에 따라 이 값을 조정하세요 */
+    font-family: "Fira Code", "Courier New", monospace; /* 원하는 폰트 패밀리로 변경 */
+    font-size: 0.9em; /* 필요에 따라 글꼴 크기를 조정하세요 */
+}
