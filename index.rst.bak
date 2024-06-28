@@ -10,8 +10,38 @@ metaFun is  comprised of seven workflows
 
 Here is **shiny** (( new note. )) nenenwenwes
 
+
+그럼제가 선배맘에 탕탕 후루후루[^sn1].
+[^sn1]: And here's my sidenote content.
+
+이건 왜안돼 
+```{figure} ../images/malwang.jpg
+---
+figclass: margin
+alt: My figure text
+name: myfig4
+---
+look at this!
+```
+
+..figure:: /images/malwang.jpg
+   :align: right
+   :alt: alternatie text
+
+
+
 # use numbering requires  # 
 italic bold requires one and two asterisk *italic * **bold**
+
+.. code-block:: bash
+
+    #!/bin/bash
+    echo "Hello, World!"
+    if [ "$?" -ne "0" ]; then
+        echo "The command was unsuccessful."
+    else
+        echo "The command was successful."
+    fi
 
 .. image:: /images/RR_memory.jpg
 
@@ -24,9 +54,11 @@ code sample could be desribe with two colon
  .. csv-table:: Comparison
    :header: Platform,Self-Contasined?,Cost,Flextibility
    :widths: 15 24 30 30 
-   
+   :class: tight-table
+
    Raspberry Pi,No,$30,Limitless
    Lego Mindstroms,Yes,$350,Medium
+
 
 
 coede eaxmple code::
@@ -38,17 +70,6 @@ coede eaxmple code::
 
    #!/bin/bash
    cat $bash wht
-
-demantia 
-
-#. RAWREAD_QC
-#. ASSEBMLY_BINNING
-#. GENOME_ASSEMBLY
-#. BIN_ASSESSMENT
-#. COMPARATIVE_ANNOTATION
-#. WMS_TAXONOMY
-#. WMS_FUNCTION
-
 
 .. note:: 
    possible admonistions are : danger, hint, error, danger, caution, tip, warning
@@ -73,11 +94,11 @@ demantia
 
 
 Justcode
-==================
+=========================
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: Accession_justcode
 
    Options/justcode
 
@@ -86,9 +107,8 @@ Justlogic
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: Justlogic
 
-   Options/justcode
    Options/justlogic
 
 # link web, document, specific spot 
@@ -106,7 +126,7 @@ https://www.youtube.com/watch?v=h8R-pim5exQ&list=PLPDCBPbzk1AYghqYazE7Cxt3p7edml
 
 link to word 
 -------------
-`Link anything <https://docs.readthedocs.io/en/stable/intro/import-guide.html>`
+`Link anything <https://docs.readthedocs.io/en/stable/intro/import-guide.html>`_
 is it work ? 
 
 문서내부에서 링크를 주는 방법은 다음과 같음 
