@@ -32,7 +32,9 @@ html_title = "My site title"
 #}
 html_theme_options = {
     "use_sidenotes": True,
-     "home_page_in_toc": True   
+     "home_page_in_toc": True ,
+    "pygment_light_style": "default",
+    "pygment_dark_style": "monokai"
 }
 html_css_files = [
     'custom.css',
