@@ -48,7 +48,7 @@ python download_db_metafun.py
 Due to the huge size of databases (After download and preparation : ~683GB),  it may take a while to download databasese depending on your network speed. 
 :::
 
-The integrity of downloaded databases is automatically checked by comparing  sha256 value provided in the download repository (http://www.microbiome.re.kr/home_design/Database.html). It there are unzigged folders and hash file in the `databases/{CARD,checkm2,dbCAN,eggNOG5,gtdb,gunc,hashes.json,host_genome,humann3,KEGG_modules,kofam,kraken2_GTDBr220,VFDB}` the databases prepation is completed.  If there are problems, please redonwload the datases. 
+The integrity of downloaded databases is automatically checked by comparing  sha256 value provided in the [download repository](http://www.microbiome.re.kr/home_design/Database.html). It there are unzigged folders and hash file in the `databases/{CARD,checkm2,dbCAN,eggNOG5,gtdb,gunc,hashes.json,host_genome,humann3,KEGG_modules,kofam,kraken2_GTDBr220,VFDB}` the databases prepation is completed.  If there are problems, please redonwload the datases. 
 You can launch metaFun from now on. 
 
 
