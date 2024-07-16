@@ -50,23 +50,22 @@ Birdeye view of metaFun pipeline. This pipeline is comprised of seven workflows.
 
  ```{admonition} Here's my title
 :class: warning
-
 Here's my admonition content
 ```
 
+> 1. [RAWREAD_QC](RAWREAD_QC)
+> 1. [ASSEMBLY_BINNING](ASSEMBLY_BINNING)
+> 1. [BIN_ASSESSMENT](BIN_ASSESSMENT)
+> 1. [COMPARATIVE_ANNOTATION](COMPARATIVE_ANNOTATION)
+> 1. [GENOME_ASSEMBLY](GENOME_ASSEMBLY)
+> 1. [WMS_TAXONOMY](WMS_TAXONOMY)
+> 1. [WMS_FUNCTION](WMS_FUNCTION)
+
+```{raw} html
+<iframe src="https://dash-mag.onrender.com" width="100%" height="1200px"></iframe>
 
 
-
-> 1. RAWREAD_QC
-> 1. ASSEBMLY_BINNING
-> 1. BIN_ASSESSMENT
-> 1. COMPARATIVE_ANNOTATION
-> 1. GENOME_ASSEMBLY
-> 1. WMS_TAXONOMY
-> 1. WMS_FUNCTION
-
-
-
+Detailed documentation and interactive content on our assembly binning strategies can be found [here](workflows/test3.py).
 
 
 Hmm what are you douing?[^sn1].
@@ -117,6 +116,7 @@ The following topic areas will help you understand and use the theme.
 
 Getstart/Getstart.md
 Beginners/Beginners.md
+
 tutorials/get-started
 content/index
 sections/index
@@ -125,6 +125,23 @@ reference
 contributing/index
 changelog
 ```
+```{toctree}
+:maxdepth: 2
+:caption: metaFun workflows
+
+workflows/workflow_list.md
+workflows/RAWREAD_QC.md
+workflows/ASSEMBLY_BINNING.md
+
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Guide for interactive visualization 
+
+```
+
+
 
 # Example pages
 

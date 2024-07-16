@@ -7,3 +7,19 @@
     font-family: "Fira Code", "Courier New", monospace; /* 원하는 폰트 패밀리로 변경 */
     font-size: 0.9em; /* 필요에 따라 글꼴 크기를 조정하세요 */
 }
+.docutils table {
+    width: 100%;
+    table-layout: auto; /* Allow columns to adjust based on content */
+    border-collapse: collapse;
+}
+
+.docutils table th, 
+.docutils table td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    word-wrap: break-word; /* Ensure long words break to fit the column */
+}
+
+.docutils table th {
+    background-color: #f5f5f5; /* Optional: Add some background color to headers */
+}
