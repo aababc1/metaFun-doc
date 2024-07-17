@@ -32,6 +32,12 @@ MarkupSafe
 mdit-py-plugins
 mdurl
 myst-parser
+myst_nb
+nbsphinx
+sphinx_thebe
+sphinx_markdown_parser
+nbsphinx
+sphinx_thebe
 nodeenv
 packaging
 pip
