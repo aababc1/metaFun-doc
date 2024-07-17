@@ -132,6 +132,7 @@ changelog
 workflows/workflow_list.md
 workflows/RAWREAD_QC.md
 workflows/ASSEMBLY_BINNING.md
+workflows/BIN_ASSESSMENT.md
 
 ```
 
