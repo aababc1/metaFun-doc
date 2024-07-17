@@ -9,7 +9,7 @@ This workflow generatereal quality controlled and host contimantion eliminated  
 ## [ASSEMBLY_BINNING](ASSEMBLY_BINNING_description)
 
 (BIN_ASSESSMENT)=
-## BIN_ASSESSMENT
+## [BIN_ASSESSMENT](BIN_ASSESSMENT_description)
 
 
 

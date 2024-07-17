@@ -37,7 +37,11 @@ html_theme_options = {
     "use_sidenotes": True,
      "home_page_in_toc": True ,
     "pygments_light_style": "default",
-    "pygments_dark_style": "monokai"
+    "pygments_dark_style": "monokai",
+    "logo": {
+    "image_light": "_static/metaFun_logo_light.png",
+    "image_dark": "_static/metaFun_logo_dark.png",
+    }
 }
 html_css_files = [
     'custom.css',
