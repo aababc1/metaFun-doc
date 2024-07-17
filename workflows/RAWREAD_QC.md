@@ -41,13 +41,7 @@ There are three options filtering the read, `human` ,`Skip filtering out`,`your 
 (metafun) nextflow run nf_scripts/RAWREAD_QC_apptainer.nf  --inputDir ${inputDir} --filter mygenome.
 :::
 
-
-
 ## Workflow Overview
-This workflow is used as input data for **[ASSEMBLY_BINNING](ASSEMBLY_BINNING_description)**, **WMS_TAXONOMY** and **WMS_FUNCTION**.
-The result of this workflow is **mandatory input** for WMS_TAXONOMY
-
-
 The workflow performs the following steps:
 
 1. FastQC analysis on raw reads. 
@@ -56,14 +50,21 @@ The workflow performs the following steps:
 4. FastQC analysis on filtered reads 
 5. MultiQC report generation
 
+Result of this workflow is used as input data for **[ASSEMBLY_BINNING](ASSEMBLY_BINNING_description)**, **WMS_TAXONOMY** and **WMS_FUNCTION**.
+The result of this workflow is **mandatory input** for WMS_TAXONOMY. 
+
 ## Inputs and Outputs
 
-**Inputs : The raw paired-end short-read metagenomic reads.`--inputDir ${inputDir} `**
-**Outputs : Quality controlled and filtered metagenomic reads and quality visualization results.  Default outdir directory is `${launchDir}/results/metagenome/RAWREAD_QC `.**
+**Inputs** : The raw paired-end short-read metagenomic reads.`--inputDir ${inputDir} `  
+**Outputs** : **Quality controlled and filtered metagenomic reads** and **quality statistical reports** visualization results.  Default outdir directory is `${launchDir}/results/metagenome/RAWREAD_QC`.  
 
-**${launchDir} is the directory where you execute nextflow script. This should be git cloned base folder of metaFun(https://github.com/aababc1/metaFun).** 
+Detailes and examples of output files are described at [Output file details and examples](RAWREAD_QC_output).
 
-`${launchDir}/results/metagenome/RAWREAD_QC ` = `${params.outdir}` 
+**`${launchDir}` is the directory where you execute nextflow script.**  
+**This should be git cloned base folder of metaFun(https://github.com/aababc1/metaFun).** 
+
+`${launchDir}` = `${base directory of metafun}`  
+`${launchDir}/results/metagenome/RAWREAD_QC` = `${params.outdir}` 
 
 | Process | InputDir | OutputDir | Note |
 |---------|----------|-----------|------|
@@ -118,6 +119,8 @@ We suppose you only specify input directory by set `--inputDir ${inputDir}` or s
 - Custom index could be utilized by s by specifying `--custom_index` in command shell or modify the parameter in the  `params.file`. 
 - The script checks for the existence and non-emptiness of the input directory before proceeding.
 
+
+(RAWREAD_QC_output)=
 ## Output file details and examples
 
 If you did not designate output, default output directory is at 
