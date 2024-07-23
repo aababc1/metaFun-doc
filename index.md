@@ -65,50 +65,7 @@ Here's my admonition content
 <iframe src="https://dash-mag.onrender.com" width="100%" height="1200px"></iframe>
 
 
-Detailed documentation and interactive content on our assembly binning strategies can be found [here](workflows/test3.py).
 
-
-Hmm what are you douing?[^sn1].
-[^sn1]: Look at this!.
-
-
-
-```{figure} images/malwang.jpg
----
-figclass: margin
-alt: My figure text
-name: myfig4
----
-Now you see me 
-```
-
-
-
-
-
-
-[Flexible content layout](reference/special-theme-elements.md)
-: Inspired by beautiful online books, such as [the Edward Tufte CSS guide](https://edwardtufte.github.io/tufte-css/)
-
-[Visual classes designed for Jupyter Notebooks](reference/notebooks)
-: Cell inputs, outputs, and interactive functionality are all supported.
-
-[Launch buttons for online interactivity](content/launch)
-: For pages that are built with computational material, connect your site to an online BinderHub for interactive content.
-
-[Bootstrap 5](https://getbootstrap.com/docs/5.0/getting-started/introduction/)
-: To style visual elements and add functionality.
-
-International
-: All text integrated in the theme is translated to the specified [Sphinx language](https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-language).
-
-:::{seealso}
-This is the default theme in [Jupyter Book](https://jupyterbook.org).
-:::
-
-# Topic areas
-
-The following topic areas will help you understand and use the theme.
 
 ```{toctree}
 :maxdepth: 2
