@@ -38,6 +38,7 @@ html_theme_options = {
      "home_page_in_toc": True ,
     "pygments_light_style": "default",
     "pygments_dark_style": "monokai",
+    "use_download_button": True,
     "logo": {
     "image_light": "_static/metaFun_logo_light.png",
     "image_dark": "_static/metaFun_logo_dark.png",
@@ -67,6 +68,8 @@ extensions = [
     'sphinx.ext.doctest',
     'sphinx.ext.viewcode',
     'sphinx.ext.autosectionlabel',
+    'sphinx_togglebutton'
+
     ]
 
 myst_enable_extensions = [

@@ -116,6 +116,7 @@ The following topic areas will help you understand and use the theme.
 
 Getstart/Getstart.md
 Beginners/Beginners.md
+Getstart/Input_preparation.md
 
 tutorials/get-started
 content/index
@@ -133,6 +134,7 @@ workflows/workflow_list.md
 workflows/RAWREAD_QC.md
 workflows/ASSEMBLY_BINNING.md
 workflows/BIN_ASSESSMENT.md
+workflows/COMPARATIVE_ANNOTATION.md
 
 ```
 
