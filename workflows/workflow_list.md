@@ -14,7 +14,7 @@ This workflow generatereal quality controlled and host contimantion eliminated  
 
 
 (COMPARATIVE_ANNOTATION)=
-## COMPARATIVE_ANNOTATION
+## [COMPARATIVE_ANNOTATION](COMPARATIVE_ANNOTATION_description)
 
 (GENOME_ASSEMBLY)=
 ## GENOME_ASSEMBLY

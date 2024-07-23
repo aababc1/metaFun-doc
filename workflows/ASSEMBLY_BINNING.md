@@ -79,7 +79,7 @@ Default output directory: `${launchDir}/results/metagenome/ASSEMBLY_BINNING`
 | Bowtie2 | Read mapping | 2.5.2. | `--sensitive` | Not specified in this script |
 | MetaBAT2 | Metagenomic binning | 2.15 | `-m 1500` | Not specified in this script |
 | SemiBin2 | Metagenomic binning | 2.1.0 | `single_easy_bin` mode with pretrained human gut model `--environment  human_gut`|`--semibin2_mode ${mode}` | 
-| DAS Tool | Bin refinement | Not specified | `--score_threshold=0` | Not specified in this script |
+| DAS Tool | Bin refinement | 1.1.7 | `--score_threshold=0` | Not specified in this script |
 
 ## Usage Notes
 
