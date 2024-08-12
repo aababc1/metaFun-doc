@@ -1,8 +1,8 @@
-(RAWREAD_QC_description)=
+(GENOME_ASSEMBLY_description)=
 
-# RAWREAD_QC  
+# GENOME_ASSEMBLY 
 
-<img src="../_static/metafun1_red.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
+<img src="../_static/metafun3_yellow.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
 This Nextflow script implements a workflow for quality control of raw reads from whole metagenome sequencing data.
 
 
