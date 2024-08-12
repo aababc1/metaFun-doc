@@ -2,6 +2,7 @@
 
 # ASSEMBLY_BINNING
 
+<img src="../_static/metafun2_orange.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
 This Nextflow script implements a workflow for de novo assembly, binning, and binning refinement of metagenomic data.
 
 ## Workflow Execution

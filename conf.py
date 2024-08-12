@@ -21,10 +21,16 @@ release = '0'
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
+#html_favicon = "_static/favicon.ico"
 
 
+# html_js_files = [
+#     'custom.js',
+# ]
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
+html_favicon = "_static/favicon_metafun.png"
 
 html_theme = 'sphinx_book_theme'
 html_static_path = ['_static']

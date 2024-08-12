@@ -8,6 +8,9 @@ This workflow generatereal quality controlled and host contimantion eliminated  
 (ASSEMBLY_BINNING)=
 ## [ASSEMBLY_BINNING](ASSEMBLY_BINNING_description)
 
+(GENOME_ASSEMBLY)=
+## [GENOME_ASSEMBLY](GENOME_ASSEMBLY_description)
+
 (BIN_ASSESSMENT)=
 ## [BIN_ASSESSMENT](BIN_ASSESSMENT_description)
 
@@ -17,13 +20,13 @@ This workflow generatereal quality controlled and host contimantion eliminated  
 ## [COMPARATIVE_ANNOTATION](COMPARATIVE_ANNOTATION_description)
 
 (GENOME_ASSEMBLY)=
-## GENOME_ASSEMBLY
+## [GENOME_ASSEMBLY](GENOME_ASSEMBLY_description)
 
 (WMS_TAXONOMY)=
-## WMS_TAXONOMY
+## [WMS_TAXONOMY](WMS_TAXONOMY_description)
 
 (WMS_FUNCTION)= 
-## WMS_FUNCTION
+## [WMS_FUNCTION](WMS_FUNCTION_description)
 
 # this is RAWREAD_QC description page. 
 

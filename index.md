@@ -55,33 +55,14 @@ Here's my admonition content
 
 > 1. [RAWREAD_QC](RAWREAD_QC)
 > 1. [ASSEMBLY_BINNING](ASSEMBLY_BINNING)
+> 1. [GENOME_ASSEMBLY](GENOME_ASSEMBLY)
 > 1. [BIN_ASSESSMENT](BIN_ASSESSMENT)
 > 1. [COMPARATIVE_ANNOTATION](COMPARATIVE_ANNOTATION)
-> 1. [GENOME_ASSEMBLY](GENOME_ASSEMBLY)
 > 1. [WMS_TAXONOMY](WMS_TAXONOMY)
 > 1. [WMS_FUNCTION](WMS_FUNCTION)
 
 ```{raw} html
 <iframe src="https://dash-mag.onrender.com" width="100%" height="1200px"></iframe>
-
-
-Detailed documentation and interactive content on our assembly binning strategies can be found [here](workflows/test3.py).
-
-
-Hmm what are you douing?[^sn1].
-[^sn1]: Look at this!.
-
-
-
-```{figure} images/malwang.jpg
----
-figclass: margin
-alt: My figure text
-name: myfig4
----
-Now you see me 
-```
-
 
 
 
@@ -110,8 +91,13 @@ changelog
 workflows/workflow_list.md
 workflows/RAWREAD_QC.md
 workflows/ASSEMBLY_BINNING.md
+workflows/GENOME_ASSEMBLY.md
 workflows/BIN_ASSESSMENT.md
 workflows/COMPARATIVE_ANNOTATION.md
+workflows/WMS_TAXONOMY.md
+workflows/WMS_FUNCTION.md
+
+
 
 ```
 

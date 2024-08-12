@@ -2,6 +2,7 @@
 
 # BIN_ASSESSMENT
 
+<img src="../_static/metafun4_green.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
 This Nextflow script implements a workflow for assessing genome quality and assigning taxonomy to metagenome-assembled genomes (MAGs).
 
 ## Workflow Execution

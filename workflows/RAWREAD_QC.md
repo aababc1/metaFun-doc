@@ -1,7 +1,8 @@
 (RAWREAD_QC_description)=
 
-# RAWREAD_QC
+# RAWREAD_QC  
 
+<img src="../_static/metafun1_red.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
 This Nextflow script implements a workflow for quality control of raw reads from whole metagenome sequencing data.
 
 
