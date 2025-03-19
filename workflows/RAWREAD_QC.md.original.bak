@@ -3,13 +3,13 @@
 # <span style="color:#FF0000">RAWREAD_QC</span>
 
 <img src="../_static/metafun1_red.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
-This module is a part of metaFun pipeline, designed for quality control of raw reads from whole metagenome sequencing data.
+This Nextflow script implements a workflow for quality control of raw reads from whole metagenome sequencing data.
 
 ## Overview
-The RAWREAD_QC module is the first step in the metaFun pipeline, designed for quality control of raw metagenomic sequencing data. It performs quality assessment, trimming, and host read filtering to prepare high-quality reads for downstream analyses. Any host read could be indexed and utilized by indexing using metaFun or you can skip host read filtering process. 
+The RAWREAD_QC workflow is the first step in the metaFun pipeline, designed for quality control of raw metagenomic sequencing data. It performs quality assessment, trimming, and host read filtering to prepare high-quality reads for downstream analyses. Any host read could be indexed and utilized by indexing using metaFun or you can skip host read filtering process. 
 
 
-## Module Execution 
+## Workflow Execution 
 
 ```{code-block} bash
 # Basic usage
@@ -36,7 +36,7 @@ There are three options filtering the read, `human` ,`Skip filtering out`,`your 
 :caption: Skip host read filtering out step and subsequent FastQC step. 
 
 # If you would like to skip any read filtering out using interested genome, use this one.
- (metafun) metafun -module RAWREAD_QC -i ${inputDir} -f none
+ `(metafun) metafun -module RAWREAD_QC -i ${inputDir} -f none`.
  ```
 
 - If you would like to your own genome to filter out reads, index it first and specify that.
@@ -49,8 +49,8 @@ There are three options filtering the read, `human` ,`Skip filtering out`,`your 
 (metafun) metafun -module RAWREAD_QC -i ${inputDir} -f anyname
 :::
 
-## Module Operation Sequence
-The module performs the following steps:
+## Workflow Overview
+The workflow performs the following steps:
 
 1. FastQC analysis on raw reads. 
 2. Trimming and quality filtering using fastp
@@ -58,46 +58,24 @@ The module performs the following steps:
 4. FastQC analysis on filtered reads 
 5. MultiQC report generation
 
-## Parameters
-**`${launchDir}` is the directory where you execute metaFun, and utilized as output base directory.** 
+Result of this workflow is used as input data for **[<span style="color:#FF9300">ASSEMBLY_BINNING</span>](ASSEMBLY_BINNING_description)**, **[<span style="color:#0846FA">WMS_TAXONOMY</span>](WMS_TAXONOMY_description)** and **[<span style="color:#7030A0">WMS_FUNCTION</span>](WMS_FUNCTION_description)**.
+The result of this workflow is **mandatory input** for <span style="color:#0846FA">WMS_TAXONOMY</span>. 
 
-| Parameter | Description | Default Value | Note |
-|-----------|-------------|---------------|------|
-| `-i, --inputDir` | Input directory containing raw reads | **You should set directory path contaning raw reads.** | **Required** |
-| `-o, --outdir` | Output directory | `${launchDir}/results/metagenome/RAWREAD_QC` | Defult output directory is recommended for downstream analysis. |
-| `-f, --filter` | Host genome filtering option | `human` | Options: `human`, `none`, or custom name |
-| `-p, --processors` | Number of CPUs to use | `4` | |
-
-
-## **Inputs and Outputs**
+## Inputs and Outputs
 
 ### Inputs
 * Raw paired-end metagenomic reads (FASTQ format, can be gzipped)
 * Specify directory of input reads with `-i ${inputDir} `
 * File naming convention: `*_1.fastq.gz`/`*_2.fastq.gz` or `*_1.fq.gz`/`*_2.fq.gz` or without gzipped suffix.
 
-(RAWREAD_QC_output)=
-
 ### Outputs
 * Quality-controlled and filtered metagenomic reads
 * Quality assessment reports and visualizations
 
-### Output directory structure
+### Output Directory Structure
 
- Output directory is at ${launchDir} or your specified directory path with `-o outdir`.
-
- We suppose you did not designate output directory as we recommended. 
-
-**`${launchDir}` is the directory where you execute metaFun, and utilized as output base directory.** 
-
-```{admonition} Switching input and output directory.
-:class: note
-
-If you defined output directory by specifying `-o ${output directory}`, you should have to modify those parameters in other modules too.
-The default output directory is `results/metagenome/RAWREAD_QC.` in your ${launchDir}.
-```
-
-
+#### Output directory is at ${launchDir} or your specified place with -o outdir 
+#### We suppose you did not designate output directory as we recommended  
 
 ```{code-block} bash
 :caption: Output directory structure
@@ -126,12 +104,19 @@ ${launchDir}/results/metagenome/RAWREAD_QC/
         └── ...
 ```
 
+## Parameters
 
+| Parameter | Description | Default Value | Note |
+|-----------|-------------|---------------|------|
+| `-i, --inputDir` | Input directory containing raw reads | **Required** | **Required** |
+| `-o, --outdir` | Output directory | `${launchDir}/results/metagenome/RAWREAD_QC` | |
+| `-f, --filter` | Host genome filtering option | `human` | Options: `human`, `none`, or custom name |
+| `-p, --processors` | Number of CPUs to use | `4` | |
 
 
 ## Execution Examples and Results
 
-### metaFun command line execution example
+### Basic Execution Example
 
 ```{figure} ../images/RAWREAD_QC_command.png
 ---
@@ -143,9 +128,7 @@ align: middle
 ---
 ```
 
-### MultiQC report example
-
-MultiQC report integrates raw read and filtered read quality statistics across all samples.
+### MultiQC Report Example
 
 ```{figure} ../images/multiqc.png
 ---
@@ -157,22 +140,42 @@ align: middle
 ---
 ```
 
-[Example of HTML multiQC report!](/_static/multiqc_report.html)
+**`${launchDir}` is the directory where you execute metaFun, and utilized as output base directory.** 
 
-
-## Nextflow Processes in <span style="color:#FF0000">RAWREAD_QC</span> Module 
+`${launchDir}` = `${base directory of metafun}`  
+`${launchDir}/results/metagenome/RAWREAD_QC` = `${params.outdir}` 
 
 | Process | InputDir | OutputDir | Note |
 |---------|----------|-----------|------|
 | fastqc_raw | `${params.inputDir}` | `${params.outdir}/fastqc_raw`  | FastQC analysis results for raw reads |
-| fastp | `${params.inputDir}` | None | Performs trimming and quality filtering |
+| fastp | `${params.inputDir}` | `${params.outdir}/fastp` | Performs trimming and quality filtering |
 | humanread_filter | Output from fastp | `${params.outdir}/read_filtered` | Removes host reads (when params.filter is not 'none') |
 | fastqc_filtered | Output from humanread_filter | `${params.outdir}/fastqc_filtered` | FastQC analysis results for filtered reads |
 | multiQC | Results from all previous processes | `${params.outdir}/multiqc` | Comprehensive report of all QC results |
 
+```{admonition} Switching input and output directory.
+:class: note
 
+If you defined output directory by specifying `-o ${output directory}`, you should have to modify those parameters in other workflows too.
+The default directory is `results/metagenome/RAWREAD_QC.` in your ${launchDir}.
+```
 
-## Descriptions of Processes in <span style="color:#FF0000">RAWREAD_QC</span> Module 
+We suppose you only specify input directory by set `--inputDir ${inputDir}` or switching it in params.file. The defulat base output directory is `results/metagenome/RAWREAD_QC`. 
+
+## Parameters in <span style="color:#FF0000">RAWREAD_QC</span>   
+
+| Parameter | Description | Default Value | Note | 
+|-----------|-------------|---------------|-------------------|
+| `db_baseDir` | Base directory for databases | `/opt/database` in apptainer env. `${git base directory}/database` in your server. | This is mounted path in apptainer environment. We do not recommend switching it to another value. |
+| `scripts_baseDir` | Base directory for scripts | `"/scratch/tools/microbiome_analysis/scripts"` in apptainer env. `${git base directory}/scripts` in your server. | This is mounted path in apptainer environment. We do not recommend switching it to another value. |
+| `filter` | Type of read filtering to perform | `'human'`| This is parameter for filtering host read. Default value is human (GRCh38_p12.dna.primary_assembly). You could skip this step by using `--filter none` in command line or  modify this value in params file. If you would like to  filter out another host genome reads, you could index genome using  `sh generate_custom_filter_usingyourgenome.sh -i $yourgenome -o $output`.  | 
+| `human_index` | Path to human genome index | `"${params.db_baseDir}/host_genome/GRCh38/GRCh38_p12.dna.primary_assembly.fa"` | This is default set value for RAWREAD_QC filtering option. If you need to switch or use other genome, please specify `--filter none` or `--filter ${your genome index}`.| 
+| `custom_index` | Path to custom genome index | It is automatically set by `--filter ${value}`. `${params.db_baseDir}/host_genome/${value}/${value}`| You can utilize any genome that you want to filter out read in metagenome. First, you need to index your genome with provided script using `sh generate_custom_filter_usingyourgenome.sh -i $yourgenome -o ${value}`. Then, use it to  nextflow run by designating `--filter value` or  setting `value` in `params.file` |  
+| `outdir` | Output directory | `"${launchDir}/results/metagenome/RAWREAD_QC"` | Once you designated the `outdir`, You should designate 'inputDir' in other workflows to be same. |
+| `cpus` | Number of CPUs to use | `4` | Number of cpus to be utilized in each program.|
+| `inputDir` | Input directory containing raw reads | `'raw_reads'` | The location of folder containing short paired-end metagenomic reads. The files could be gzipped and suffix of file could be fastq or fq such as `*1.fastq,*2.fastq`,`*1.fastq.gz,*2.fastq.gz`,`*1.fq,*2.fq`,`*1.fq.gz,*2.fq.gz` |
+
+## Descriptions of Processes in <span style="color:#FF0000">RAWREAD_QC</span> module 
 
 1. **FastQC on Raw Reads**: Performs FastQC analysis on the raw input metagenomic reads specified by `--inputDir ${your input directory}`.
 2. **fastp Processing**: Trims and filters the metagenomic reads using fastp.
@@ -194,5 +197,17 @@ align: middle
 
 - Custom index could be generated by specifying `-f name` using `metafun -module PREPARE_CUSTOM_HOST -i yourgenome.fasta -f name`
 - The script checks for the existence and non-emptiness of the input directory before proceeding.
-- Result of this module is used as input data for **[<span style="color:#FF9300">ASSEMBLY_BINNING</span>](ASSEMBLY_BINNING_description)**, **[<span style="color:#0846FA">WMS_TAXONOMY</span>](WMS_TAXONOMY_description)** and **[<span style="color:#7030A0">WMS_FUNCTION</span>](WMS_FUNCTION_description)**.
-The result of this module is **mandatory input** for <span style="color:#0846FA">WMS_TAXONOMY</span> for Kraken2 with Bracken. 
+
+
+(RAWREAD_QC_output)=
+## Output file details and examples
+
+If you did not designate output, default output directory is at 
+The workflow generates the following outputs in the specified `outdir`:
+
+- FastQC reports for raw and filtered reads
+- Fastp filtered reads and JSON report
+- Host-filtered reads (if applicable)
+- MultiQC report summarizing all QC steps
+
+

@@ -1,0 +1,3375 @@
+#!/usr/bin/env nextflow
+// this script was optimized apptainer in any compurational environment. 
+nextflow.enable.dsl=2 
+
+params.db_baseDir = "/opt/database"
+params.scripts_baseDir = "/scratch/tools/microbiome_analysis/scripts"
+
+
+params.accessions = [] // List of accessions
+params.cpus = 8 // Default CPU count
+
+//params.outdir_Base = "/data2/leehg/OMD3/01pipeline/IBD_test/" // modify this if you want output files stored any other directory. 
+params.inputDir = "${launchDir}/results/metagenome/RAWREAD_QC/read_filtered" // Input directory
+params.outdir =  "${launchDir}/results/metagenome/ASSEMBLY_BINNING"
+params.semibin2_mode = "self" 
+params.megahit_presets = "default"
+if (!new File(params.inputDir).exists()) {
+    error "Input directory does not exist: ${params.inputDir}. Please specify a valid directory with --inputDir.\n Quality controlled paired-end fastq files are needed. "
+} else {
+    // Check if the directory is empty
+    if (new File(params.inputDir).list().length == 0) {
+        error "Input directory is empty: ${params.inputDir}. Please specify a directory with --inputDir . \n \n Quality controlled paired-end fastq files are needed"
+    }
+}
+
+def validenvs = ['human_gut','dog_gut','ocean','soil','cat_gut','human_oral','mouse_gut','pig_gut','built_environment','wastewater','chicken_caecum','global']
+def chosenFilter = validenvs.contains(params.semibin2_mode) ? params.semibin2_mode : 'self'
+def ANSI_RESET = "\u001B[0m"
+def ANSI_ORANGE = "\033[38;2;240;152;55m"
+def ANSI_YELLOW = "\u001B[33m"
+def ANSI_GREEN = "\u001B[32m"
+def ANSI_CYAN = "\033[38;2;0;255;255m"
+def ANSI_RED= "\u001B[31m"
+
+log.info """\
+
+===========================================
+${ANSI_ORANGE}ASSEMBLY_BINNING${ANSI_RESET} - Metagenome Assembly & Binning
+===========================================
+(Apptainer Container with Nextflow)
+
+Key Features:
+  ✓ MEGAHIT assembly with multiple presets
+  ✓ SemiBin2 and MetaBAT2 for single-sample binning
+  ✓ DAS_Tool for bin refinement
+
+
+This analysis contains ${ANSI_ORANGE}MEGAHIT${ANSI_RESET}, ${ANSI_ORANGE}MetaBAT2${ANSI_RESET },  ${ANSI_ORANGE}SemiBin2${ANSI_RESET} and ${ANSI_ORANGE}DAS_Tool${ANSI_RESET}.
+
+${ANSI_RED}Required Parameters:${ANSI_RESET}
+------------------
+${ANSI_RED}--inputDir${ANSI_RESET}         : Directory containing quality-controlled reads
+                     Should contain paired-end fastq files from RAWREAD_QC
+
+
+Optional Parameters:
+------------------
+${ANSI_YELLOW}--megahit_presets${ANSI_RESET}  : Assembly presets for MEGAHIT
+                     Available options:
+                     ${ANSI_GREEN}default${ANSI_RESET}          : Default parameters (recommended for most data)
+                     ${ANSI_GREEN}meta-large${ANSI_RESET}       : For large & complex metagenomes
+                     ${ANSI_GREEN}meta-sensitive${ANSI_RESET}  : More sensitive but slower
+
+${ANSI_YELLOW}--semibin2_mode${ANSI_RESET}    : self-supervised method or prebuilt environment SemiBin2 model 
+                     Available models:
+                     ${ANSI_GREEN}human_gut${ANSI_RESET}, ${ANSI_GREEN}dog_gut${ANSI_RESET}, ${ANSI_GREEN}ocean${ANSI_RESET}, 
+                     ${ANSI_GREEN}soil${ANSI_RESET}, ${ANSI_GREEN}cat_gut${ANSI_RESET}, ${ANSI_GREEN}human_oral${ANSI_RESET},
+                     ${ANSI_GREEN}mouse_gut${ANSI_RESET}, ${ANSI_GREEN}pig_gut${ANSI_RESET}, ${ANSI_GREEN}built_environment${ANSI_RESET},
+                     ${ANSI_GREEN}wastewater${ANSI_RESET}, ${ANSI_GREEN}chicken_caecum${ANSI_RESET}, ${ANSI_GREEN}global${ANSI_RESET},
+                     ${ANSI_GREEN}self${ANSI_RESET}
+                     (default: self)
+
+${ANSI_YELLOW}--cpus${ANSI_RESET}             : Number of CPUs to use (default: ${params.cpus})
+
+
+${ANSI_CYAN}Output Directories:${ANSI_RESET}
+------------------
+${ANSI_CYAN}- assembled_contigs/${ANSI_RESET}      : Final assembled contigs
+${ANSI_CYAN}- metabat2_bins/${ANSI_RESET}          : MetaBat2 binning results
+${ANSI_CYAN}- semibin2_bins/${ANSI_RESET}          : SemiBin2 binning results
+${ANSI_CYAN}- final_bins/${ANSI_RESET}             : Refined bins from DAS_Tool
+
+${params.semibin2_mode == 'self' ? ANSI_YELLOW + 'NOTE: Running SemiBin2 in self-training mode' + ANSI_RESET : ''}
+
+\033[38;2;180;180;180mNote:\033[0m Output bins will be used in: 
+${ANSI_GREEN}BIN_ASSESSMENT${ANSI_RESET}
+\033[38;2;78;149;217mCOMPARATIVE_ANNOTATION${ANSI_RESET}
+    """
+    .stripIndent(true)
+
+// Process for assembly and renaming contigs
+process AssemblyAndRename {
+    tag "assembly megahit of ${accession}"
+    publishDir "${params.outdir}/assembled_contigs", mode : 'copy'
+    //maxForks params.accessions.size()
+    cpus params.cpus
+    errorStrategy 'Retry'
+    //conda "$HOME/miniforge3/envs/ASSEMBLY_BINNING"
+    input:
+    //val accession 
+    tuple val(accession), path(reads)
+
+    output:
+    tuple val(accession) , path("results/assembly/${accession}/${accession}_renamed_MH.contigs.fa")
+    script:    
+    if(params.megahit_presets == "default")
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    mkdir -p work/assembly
+    megahit -1 ${reads[0]} -2 ${reads[1]} -o work/assembly/${accession}  -t ${task.cpus}    
+    mkdir -p results/assembly/${accession}
+    cat work/assembly/${accession}/final.contigs.fa | sed 's/^>/>${accession}_/g' | awk '{print \$1}' > results/assembly/${accession}/${accession}_renamed_MH.contigs.fa
+    """
+    else
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    mkdir -p work/assembly
+    megahit -1 ${reads[0]} -2 ${reads[1]} -o work/assembly/${accession} --presets ${params.megahit_presets} -t ${task.cpus}    
+    mkdir -p results/assembly/${accession} 
+    cat work/assembly/${accession}/final.contigs.fa | sed 's/^>/>${accession}_/g' | awk '{print \$1}' > results/assembly/${accession}/${accession}_renamed_MH.contigs.fa
+    """
+    //replace to this after completion 
+}
+// Additional processes for Bowtie2 mapping, sorting, indexing, Metabat2, SemiBin2, and DAS Tool
+// ...
+
+process Bowtie2IndexBuild {
+    tag "${accession}"
+    //maxForks params.accessions.size()
+    cpus 4
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+
+    input : 
+    tuple val(accession) , path(contigs)
+
+    output : 
+    tuple val(accession), path("${accession}_MH_bt2_index.*.bt2")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+    bowtie2-build --threads ${task.cpus} ${contigs} ${accession}_MH_bt2_index
+    """
+    //publishDir "${params.outdir}/quant", mode:'copy'
+}
+
+process MHcontig2sortedbam {
+    tag "${accession}"
+    maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+    cpus 4
+
+    input: 
+    tuple val(accession), path(reads) ,path(index)  // accession and read pair
+      // bowtie2 accession and bowtie2 index files 
+    // first is reac_ch second is from bowtie2index, acceiion2 is not used here
+    output:
+    tuple val(accession)  ,path("${accession}_sorted.bam") ,path("${accession}_sorted.bam.bai")
+     //\$index_base
+
+    script:
+    def idxPrefix = index[0].toString().replaceAll(/\.(\d+)\.bt2$/, '')
+    """
+    echo ${idxPrefix}
+    eval "\$(micromamba shell hook --shell bash)"
+    #micromamba activate ASSEMBLY_BINNING
+    micromamba activate RAWREAD_QC
+
+    index_base=${accession}_MH_bt2_index
+    bowtie2 --sensitive -p ${task.cpus} -x ${idxPrefix} -1 ${reads[0]} -2${reads[1]}  -S ${accession}.sam  
+    samtools sort -@ ${task.cpus} -o ${accession}_sorted.bam ${accession}.sam 
+    samtools index -@ ${task.cpus}  ${accession}_sorted.bam -o ${accession}_sorted.bam.bai
+    """
+// bowtie2 --sensitive -p ${params.cpus} -x ${accession}_MH_bt2_index -1 ${reads[0]} -2${reads[1]}  -S ${accession}.sam
+
+}
+
+process MB2_binning {
+    tag "${accession}"
+    maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+    cpus 4
+    publishDir "${params.outdir}/metabat2_bins", mode : 'copy'
+
+    input: 
+    //tuple val(accession),path(sorted_bam),path(bai)
+    //tuple val(accession1), path(contig)
+    tuple val(accession),path(sorted_bam),path(bai), path(contig)
+
+
+    output:
+    tuple val(accession), path ("${accession}_MB2*.fa"), optional: true, emit: mb2_output
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    jgi_summarize_bam_contig_depths --outputDepth ${accession}_jgi_summerize_depth.txt ${sorted_bam}
+    metabat2 -i ${contig} -m 1500 -t ${task.cpus} -o ${accession}_MB2 -a ${accession}_jgi_summerize_depth.txt 
+    """
+}
+//def validenvs = ['human_gut','dog_gut','ocean','soil','cat_gut','human_oral','mouse_gut','pig_gut','built_environment','wastewater','chicken_caecum','global']
+
+//def chosenFilter = validenvs.contains(params.semibin2_mode) ? params.semibin2_mode : 'self'
+
+
+
+process SB2_binning {
+    tag "${accession}"
+    maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+    publishDir "${params.outdir}/semibin2_bins", mode : 'copy'
+    cpus 4
+
+    input: 
+    //tuple val(accession),path(sorted_bam),path(bai)
+    //tuple val(accession1), path(contig)
+    tuple val(accession),path(sorted_bam),path(bai), path(contig)
+
+    output:
+    tuple val(accession), path ("*.fa"), optional: true, emit : sb2_output
+    //path ("${accession}_SB2_[0-9]*.fa"), optional: true, emit : sb2_output
+// semibin options will be added further . 
+    script:
+    if(chosenFilter == 'self')
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    SemiBin2  single_easy_bin  --self-supervised   \
+    -i ${contig}  -b ${sorted_bam} -o ./ --compression none --tag-output ${accession}_${chosenFilter}_SB2 -p ${task.cpus}
+    mv output_bins/*.fa ./ 
+
+    """
+    else
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    SemiBin2  single_easy_bin   --environment ${params.semibin2_mode}  \
+    -i ${contig}  -b ${sorted_bam} -o ./ --compression none --tag-output ${accession}_${chosenFilter}_SB2 -p ${task.cpus}
+    mv output_bins/*.fa ./ 
+    """
+
+}
+
+process Contigs2bin_prep_mb2 {
+    tag "${accession}"
+    maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+    cpus 1
+    input:
+    
+    tuple val(accession), path(bins)
+
+    output:
+    tuple val(accession),path ("${accession}_mb2_aggregated_contigs2bin.tsv") ,optional: true
+
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    Fasta_to_Contig2Bin.sh -e fa -i . > ${accession}_mb2_aggregated_contigs2bin.tsv
+    """
+}
+process Contigs2bin_prep_sb2 {
+    tag "${accession}"
+    maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING'
+    cpus 1 
+ 
+    input:
+    tuple val(accession), path(bins)
+
+
+    output:
+    tuple val(accession), path ("${accession}_sb2_aggregated_contigs2bin.tsv") ,  optional: true 
+    
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    Fasta_to_Contig2Bin.sh -e fa -i . > ${accession}_sb2_aggregated_contigs2bin.tsv
+    """
+}
+
+process Dastool { 
+    publishDir "${params.outdir}/dastool_bins", mode : 'copy'
+    tag "${accession}"
+    //maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+    cpus 4
+        
+        input:
+    tuple val(accession),path(mb2) ,path(sb2),path(contig)
+   
+    //tuple val(accession), path(contig)
+
+    output:
+    path("*.fa"), optional: true
+    
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate ASSEMBLY_BINNING
+    DAS_Tool -i ${accession}_mb2_aggregated_contigs2bin.tsv,${accession}_sb2_aggregated_contigs2bin.tsv \
+    -l metabat2,semibin2 -c ${contig} -o ${accession}_dastool -t ${task.cpus} --write_bins --score_threshold=0
+    for i in ${accession}_dastool_DASTool_bins/*.fa; do 
+        if [ -e \$i ]; then
+            mv \$i ./
+        fi
+    done
+
+    mv ${accession}_renamed_MH.contigs.fa ${accession}_dastool_DASTool_bins/
+    """
+}
+// #mv ${accession}_dastool_DASTool_bins/*.fa ./ 
+process get_bins {
+    publishDir "${params.outdir}", mode : 'copy'
+    tag "${accession}"
+    maxForks params.accessions.size()
+    //conda '$HOME/miniforge3/envs/ASSEMBLY_BINNING' 
+            input:
+    path(bins)
+        output:
+    path("final_bins/*.fa"), optional: true
+       
+        script:
+    """
+    
+    mkdir final_bins
+    mv *.fa final_bins
+    """
+
+}
+
+workflow {
+    // Define channels
+    //read_pairs_ch = Channel.fromFilePairs( params.reads, checkIfExists:true )
+
+    reads_ch = Channel.fromFilePairs("${params.inputDir}/*_{1,2}.{fastq,fq}{.gz,}", checkIfExists: true)
+                .map { accession, reads -> 
+                    // Split the accession name to remove the '_fastp' part
+                    //def sam_accession = accession.split('_')[0]
+                    def sam_accession = accession.replaceAll(/_fastp.*$/, '')
+                    tuple(sam_accession, reads) 
+                }
+    reads_ch.view()
+
+    // Process for assembly and renaming contigs
+    assembly_and_rename = AssemblyAndRename(reads_ch)
+    assembly_and_rename.view()
+    bowtie2_index_build = Bowtie2IndexBuild(assembly_and_rename)
+    
+    acc_bam_bai =reads_ch\
+        |join(bowtie2_index_build)\
+        |MHcontig2sortedbam
+    acc_bam_bai.view()
+
+    acc_bam_bai.map { tuple(accession, sorted_bam, bai) -> tuple(accession, sorted_bam) }.view()
+    // MB2 input accession, sorted_bam, MH_contig
+            //MB2_input.view()
+    //mb2_bins =  MB2_binning(accession_ch,sorted_bam_ch,contig_ch )
+    //mb2_bins =  MB2_binning(acc_bam_bai,assembly_and_rename)
+    mb2_bins = acc_bam_bai\
+        |join(assembly_and_rename)\
+        | MB2_binning
+
+    mb2_bins.view()
+
+    //sb2_bins =  SB2_binning(acc_bam_bai,assembly_and_rename)
+    sb2_bins = acc_bam_bai\
+        |join(assembly_and_rename)\
+        | SB2_binning
+
+    //sb2_bins.view()
+
+        // Define a prefix for each use case
+    def mb2_prefix = "mb2"
+    def sb2_prefix = "sb2"
+    mb2_bins.view()
+    sb2_bins.view()
+    mb2_contig2bin = Contigs2bin_prep_mb2(mb2_bins)
+    sb2_contig2bin = Contigs2bin_prep_sb2(sb2_bins)
+    dastool_bins = mb2_contig2bin\
+        |join(sb2_contig2bin)\
+        |join(assembly_and_rename)\
+        |Dastool
+    get_bins(dastool_bins)
+
+    // if (mb2_count > 0 && sb2_count > 0) {
+    //     mb2_contig2bin = Contigs2bin_prep_mb2(mb2_prefix, mb2_bins)
+    //     sb2_contig2bin = Contigs2bin_prep_sb2(sb2_prefix, sb2_bins)
+    //     dastool_bins = Dastool(mb2_contig2bin, sb2_contig2bin, assembly_and_rename)
+    //     get_bins(dastool_bins)
+    // } else {
+    //     // If only one of MB2 or SB2 results exists, move it to final_bins directory
+    //     if (mb2_count > 0) {
+    //         get_bins(mb2_bins)
+    //     }
+    //     else (sb2_count> 0) {
+    //         get_bins(sb2_bins)
+    //     }
+    //     }
+    }    
+
+
+    //nextflow run script7.nf -resume -with-report -with-trace -with-timeline -with-dag dag.png
+
+    // Additional workflow logic for Bowtie2 mapping, sorting, indexing, Metabat2, SemiBin2, and DAS Tool
+
+
+#!/usr/bin/env nextflow
+// this script was optimized apptainer in any compurational environment. 
+nextflow.enable.dsl=2
+
+/*
+params.workflow_name="BIN_ASSESSMENT"
+manifest {
+    name = 'BIN_ASSESSMENT'
+}
+*/
+//params.db_baseDir = "/scratch/tools/microbiome_analysis/database"
+params.scripts_baseDir = "/scratch/tools/microbiome_analysis/scripts"
+params.db_baseDir = "/opt/database"
+//params.scripts_baseDir ="/data2/leehg/OMD3/Generated_pipeline/scratch/tools/microbiome_analysis/scripts/"
+////////////////////////
+def runId = "${new Date().format('yyyyMMddHHmmss')}_${workflow.runName}"
+params.run_id = runId
+
+
+//params.run_id = UUID.randomUUID().toString() // if you don't wnat random id,  set --run_id
+////////////////////////
+params.cpus = 20
+params.outputDirCheckM2 = 'bin_assess_checkm2'
+params.outputDirGUNC = 'bin_assess_gunc'
+
+params.outdir_Base = "${launchDir}" // modify this if you want output files stored any other directory. 
+params.inputDir = "${params.outdir_Base}/results/metagenome/ASSEMBLY_BINNING/final_bins"
+
+params.metadata = null
+params.accession_column = 1
+params.data_type='MAG'
+
+params.pass_quality = "QS50.pass"
+def valid_quality_filters = ['medium_quality.pass', 
+                           'high_quality.pass', 
+                           'medium_quality_gunc.pass', 
+                           'high_quality_gunc.pass', 
+                           'QS50.pass', 
+                           'QS50_gunc.pass',
+                           'all']  // 
+
+// filter check . 
+if (!valid_quality_filters.contains(params.pass_quality)) {
+    error """Invalid quality filter: ${params.pass_quality}
+            Valid options are: ${valid_quality_filters.join(', ')}"""
+}
+
+def logo_file = file("${workflow.projectDir}/../scripts/logo.txt")
+//def logo_file = file('logo.txt')
+if (logo_file.exists()) {
+    custom_logo = logo_file.text
+    println(custom_logo)
+} else {
+    custom_logo = "Where is the face of metaFun?? :l"
+    println(custom_logo)
+}
+println("\nVisit documentation to find out description of this workflow: \n")
+println("https://metafun-doc.readthedocs.io/en/latest/workflows/BIN_ASSESSMENT.html\n")
+
+
+def getAbsolutePath(String path) {
+    def file = new File(path)
+    return file.getAbsolutePath()
+}
+
+
+//params.inputDir = getAbsolutePath(params.inputDir)
+
+
+params.outdir = "${params.outdir_Base}/results/metagenome/BIN_ASSESSMENT"
+
+params.GUNCdb = "${params.db_baseDir}/gunc/gunc_db_progenomes2.1.dmnd"
+params.checkm2db="${params.db_baseDir}/checkm2/CheckM2_database/uniref100.KO.1.dmnd"
+//params.cpus = 64
+
+def ANSI_RESET = "\u001B[0m"
+def ANSI_YELLOW = "\u001B[33m"
+def ANSI_GREEN = "\u001B[32m"
+def ANSI_BLUE = "\u001B[34m"
+def ANSI_RED= "\u001B[31m"
+
+params.help=null 
+//${custom_logo}
+//Visit documentation to find out description of this workflow: 
+//https://metafun-doc.readthedocs.io/en/latest/workflows/BIN_ASSESSMENT.html
+
+if (params.help) {
+log.info """
+Usage : 
+    nextflow run nf_scripts/BIN_ASSESSMENT_apptainer.nf --metadata "\${your metadata}" --accession_column "\${your accessioncolumn}"
+${ANSI_YELLOW}BIN_ASSESSMENT : assess genome quality and assign taxonomy${ANSI_RESET}
+=========================================================
+ ${ANSI_GREEN}CheckM2${ANSI_RESET}            : No option, database 1.0.2
+ ${ANSI_GREEN}GUNC${ANSI_RESET}               : No option, database progenomes2.1 diamond
+ ${ANSI_GREEN}GTDB${ANSI_RESET}               : r220 version
+
+This analysis contains ${ANSI_GREEN}GUNC${ANSI_RESET}, ${ANSI_GREEN}CheckM2${ANSI_RESET}, and ${ANSI_GREEN}GTDB${ANSI_RESET} information.
+
+Required Parameters:
+------------------
+${ANSI_YELLOW}--metadata${ANSI_RESET}         : Path to metadata file
+                     Required for ${ANSI_RED}COMPARATIVE_ANNOTATION${ANSI_RESET}
+
+${ANSI_YELLOW}--accession_column${ANSI_RESET} : Column index in metadata matching genome filenames
+                     (e.g., columns containing accession number of metadata)
+
+Optional Parameters:
+------------------
+${ANSI_YELLOW}--pass_quality${ANSI_RESET}     : Quality filter for selecting genomes for GTDB-Tk analysis
+                     Available options:
+                     ${ANSI_GREEN}medium_quality.pass${ANSI_RESET}      : Completeness ≥ 50%, Contamination < 10%
+                     ${ANSI_GREEN}high_quality.pass${ANSI_RESET}       : Completeness > 90%, Contamination < 5%
+                     ${ANSI_GREEN}medium_quality_gunc.pass${ANSI_RESET} : medium_quality + GUNC pass
+                     ${ANSI_GREEN}high_quality_gunc.pass${ANSI_RESET}  : high_quality + GUNC pass
+                     ${ANSI_GREEN}QS50.pass${ANSI_RESET}               : QS50 score ≥ 50 (default)
+                     ${ANSI_GREEN}QS50_gunc.pass${ANSI_RESET}          : QS50 pass + GUNC pass
+                     ${ANSI_GREEN}all${ANSI_RESET}                     : No quality filtering
+
+${ANSI_YELLOW}--inputDir${ANSI_RESET}        : Input directory containing genome bins (default: ${params.outdir_Base}/results/metagenome/ASSEMBLY_BINNING/final_bins)
+                     Files must have .fa, .fna, or .fasta extension
+
+${ANSI_YELLOW}--outdir_Base${ANSI_RESET}     : Base output directory (default: ${launchDir})
+                     Final output will be in: ${params.outdir_Base}/results/metagenome/BIN_ASSESSMENT
+
+${ANSI_YELLOW}--cpus${ANSI_RESET}             : Number of CPUs to use (default: ${params.cpus})
+
+Output Files:
+-----------
+- quality_taxonomy_combined_[TIMESTAMP].csv : Combined quality and taxonomy information
+- bins_quality_passed/                     : Directory containing genomes passing quality filter
+                                           These bins will be used in ${ANSI_RED}COMPARATIVE_ANNOTATION${ANSI_RESET}
+
+Note: Selected quality filter (--pass_quality) determines which genomes will be 
+      available for downstream analysis in ${ANSI_RED}COMPARATIVE_ANNOTATION${ANSI_RESET}
+"""
+exit 0
+}
+
+
+if (!new File(params.inputDir).exists()) {
+    error """
+${ANSI_RED}Input directory does not exist: ${params.inputDir}
+Please specify a valid directory with --inputDir that contains genome bins.
+Expected location: ${params.outdir_Base}/results/metagenome/ASSEMBLY_BINNING/final_bins
+Or provide a custom path with --inputDir option.${ANSI_RESET}
+"""
+} else {
+    if (new File(params.inputDir).list().length == 0) {
+        error """
+${ANSI_RED}Input directory is empty: ${params.inputDir}
+Directory should contain genome bins with .fa, .fna, or .fasta extensions.
+Please check the path or specify a different directory with --inputDir.${ANSI_RESET}
+"""
+    }
+}
+
+"""
+if (!new File(params.inputDir).exists()) {
+    error "Input directory does not exist: ${params.inputDir}. Please specify a valid directory with --inputDir."
+} else {
+    // Check if the directory is empty
+    if (new File(params.inputDir).list().length == 0) {
+        error "Input directory is empty: ${params.inputDir}. Please specify a directory with --inputDir : assembled genomic fna files."
+    }
+}
+"""
+
+//${custom_logo}
+//Visit documentation to find out description of this workflow: 
+//https://metafun-doc.readthedocs.io/en/latest/workflows/BIN_ASSESSMENT.html
+log.info """
+=========================================================
+${ANSI_GREEN}BIN_ASSESSMENT${ANSI_RESET} - Assess Genome Quality and Assign Taxonomy
+=========================================================
+(Apptainer Container with Nextflow)
+
+Key Features:
+  ✓ CheckM2-based quality assessment
+  ✓ GUNC-based contamination check
+  ✓ GTDB-Tk taxonomy classification
+  ✓ Quality filtering for downstream analysis
+
+
+This analysis contains ${ANSI_GREEN}GUNC${ANSI_RESET}, ${ANSI_GREEN}CheckM2${ANSI_RESET}, and ${ANSI_GREEN}GTDB${ANSI_RESET}.
+
+\033[31mRequired Parameters:\033[0m 
+------------------
+${ANSI_RED}--metadata${ANSI_RESET}         : Path to metadata file
+                     Required for genome metadata file generation. Metagenome metadata file is needed for automatic genome metadata file generation in this module.
+
+${ANSI_RED}--accession_column${ANSI_RESET} : Column index in metadata matching prefix of genome filenames.
+                     (e.g., columns containing accession number of metadata)
+
+
+Optional Parameters:
+------------------
+${ANSI_YELLOW}--pass_quality${ANSI_RESET}     : Quality filter for selecting genomes for GTDB-Tk analysis
+                     Available options:
+                     ${ANSI_GREEN}medium_quality.pass${ANSI_RESET}      : Completeness ≥ 50%, Contamination < 10%
+                     ${ANSI_GREEN}high_quality.pass${ANSI_RESET}       : Completeness > 90%, Contamination < 5%
+                     ${ANSI_GREEN}medium_quality_gunc.pass${ANSI_RESET} : medium_quality + GUNC pass
+                     ${ANSI_GREEN}high_quality_gunc.pass${ANSI_RESET}  : high_quality + GUNC pass
+                     ${ANSI_GREEN}QS50.pass${ANSI_RESET}               : QS50 score ≥ 50 (default)
+                     ${ANSI_GREEN}QS50_gunc.pass${ANSI_RESET}          : QS50 pass + GUNC pass
+                     ${ANSI_GREEN}all${ANSI_RESET}                     : No quality filtering
+
+${ANSI_YELLOW}--inputDir${ANSI_RESET}        : Input directory containing genome bins 
+                    (default: ${params.outdir_Base}/results/metagenome/ASSEMBLY_BINNING/final_bins)
+                     Files must have .fa, .fna, or .fasta extension
+
+${ANSI_YELLOW}--outdir_Base${ANSI_RESET}     : Base output directory (default: ${launchDir})
+                     Final output will be in: ${params.outdir_Base}/results/metagenome/BIN_ASSESSMENT
+
+${ANSI_YELLOW}--cpus${ANSI_RESET}             : Number of CPUs to use (default: ${params.cpus})
+
+${ANSI_YELLOW}--data_type${ANSI_RESET}       : Type of input data (default: 'MAG')
+
+${ANSI_YELLOW}--run_id${ANSI_RESET}          : Custom run identifier (default: timestamp_workflowName)
+
+
+\033[38;2;0;255;255mOutput Files:\033[0m
+-----------
+\033[38;2;0;255;255m- quality_taxonomy_combined_[TIMESTAMP].csv\033[0m : Combined quality and taxonomy information
+\033[38;2;0;255;255m- bins_quality_passed/\033[0m                     : Directory containing genomes passing quality filter
+                                           These bins will be used in \033[38;2;78;149;217mCOMPARATIVE_ANNOTATION${ANSI_RESET}
+\033[38;2;0;255;255m- checkm2_[RUN_ID]/\033[0m : CheckM2 output directory
+\033[38;2;0;255;255m- gunc_[RUN_ID]/\033[0m : GUNC output directory
+\033[38;2;0;255;255m- gtdb_outdir_[RUN_ID]/\033[0m : GTDB-Tk output directory
+
+
+Note: Selected quality filter (--pass_quality) determines which genomes will be 
+      available for downstream analysis in \033[38;2;78;149;217mCOMPARATIVE_ANNOTATION${ANSI_RESET}.
+      Using GENOME SELECTOR,  intersted species are selected and used for \033[38;2;78;149;217mCOMPARATIVE_ANNOTATION${ANSI_RESET}..
+
+${params.metadata ? "" : ANSI_RED + "You did not provide any metadata. Please provide genome metadata using --metadata" + ANSI_RESET}
+${params.metadata ? "" : ANSI_RED + "Any kind of genome metadata would be needed in COMPARATIVE_ANNOTATION analysis" + ANSI_RESET}
+${params.metadata ? "" : ANSI_RED + "Created metadata file will contain only genome quality and taxonomy information." + ANSI_RESET}
+
+
+
+Final metadata file is created and saved into your launch directory : 
+${ANSI_BLUE}combined_metadata_quality_taxonomy_${params.run_id}.csv${ANSI_RESET}
+"""
+//:when you use --metadata option
+
+process prepareInputFiles {
+    publishDir "${params.outdir}/prepared_bins_${params.run_id}", mode: 'copy'
+    
+    input:
+    path inputDir
+
+    output:
+    path "renamed_bins"
+
+    script:
+    """
+    mkdir -p renamed_bins
+    
+    for file in ${inputDir}/*.{fa,fna,fasta,fa.gz,fna.gz,fasta.gz}; do
+        if [[ -f "\$file" ]]; then
+            basename=\$(basename "\$file")
+            if [[ "\$file" == *.gz ]]; then
+                gunzip -c "\$file" > "renamed_bins/\${basename%.gz}"
+                basename=\${basename%.gz}
+            else
+                cp "\$file" "renamed_bins/\$basename"
+            fi
+            if [[ "\$basename" == *.fna || "\$basename" == *.fasta ]]; then
+                mv "renamed_bins/\$basename" "renamed_bins/\${basename%.*}.fa"
+            fi
+        fi
+    done
+    """
+}
+
+
+
+
+
+
+process runCheckM2 {
+    publishDir "${params.outdir}/checkm2_${params.run_id}", mode: 'copy'   
+    //conda "$HOME/miniforge3/envs/checkm2"
+    cpus params.cpus
+    errorStrategy 'retry'
+    maxRetries 3    
+
+    input:
+    path bin_dir
+
+    output:
+    path "${params.outputDirCheckM2}"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate checkm2 
+    time checkm2 predict --threads ${task.cpus} --input ${bin_dir} \
+    --output-directory ${params.outputDirCheckM2} -x fa --database_path ${params.checkm2db}
+    """
+}
+
+process runGUNC {
+    publishDir "${params.outdir}/gunc_${params.run_id}", mode: 'copy'
+    //conda "$HOME/miniforge3/envs/checkm2"
+    cpus params.cpus
+
+    input:
+    path checkm2faa_dir 
+
+    output:
+    path "${params.outputDirGUNC}"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate checkm2     
+    mkdir ${params.outputDirGUNC}
+    time gunc run -d ${checkm2faa_dir}/protein_files -g -t ${task.cpus} -o ${params.outputDirGUNC} \
+    --db_file ${params.GUNCdb} -e .faa
+    """
+}
+
+process combineFiles {
+    publishDir "${params.outdir}/checkm_gunc_combined_${params.run_id}", mode: 'copy'   , pattern: 'combined_report.tsv'
+    publishDir "${params.outdir}", mode: 'copy', pattern: 'bins_quality_passed'
+
+    //publishDir "${params.outdir}", mode: 'copy'
+    //containerOptions = "--bind ${params.inputDir}"
+    //runOptions = "--bind ${launchDir}/${params.inputDir}"
+    cpus params.cpus
+
+    //conda '$HOME/miniforge3/envs/checkm2'
+    //apptainer.runOptions = "--bind ${params.inputDir}:${params.inputDir}"
+    input:
+    path checkm2Files
+    path guncFiles
+    path inputdir
+    output:
+    path "combined_report.tsv"// , emit : combined_report
+    path "bins_quality_passed"
+
+    script:
+    def filter_command = params.pass_quality == 'all' ? 
+        "cp \$(ls ${inputdir}/*.fa) bins_quality_passed/" :
+        """
+        col_num=\$(head -1 combined_report.tsv | tr '\\t' '\\n' | grep -n "^${params.pass_quality}\$" | cut -d: -f1)
+        awk -v col="\$col_num" -F'\\t' '\$col=="True" {print \$1}' combined_report.tsv | sed -e 's/\$/.fa/g' > passlist
+        cp \$(grep -Ff passlist <(ls ${inputdir}/*.fa)) bins_quality_passed/
+        """
+    
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate checkm2     
+    cp ${checkm2Files}/quality_report.tsv ./ 
+    cp ${guncFiles}/GUNC.progenomes_2.1.maxCSS_level.tsv ./ 
+    python ${params.scripts_baseDir}/Checkm2_GUNC_combine_quality_pass.py quality_report.tsv GUNC.progenomes_2.1.maxCSS_level.tsv combined_report.tsv
+    mkdir bins_quality_passed
+    ${filter_command}
+    """    
+    /* """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate checkm2     
+    cp ${checkm2Files}/quality_report.tsv ./ 
+    cp ${guncFiles}/GUNC.progenomes_2.1.maxCSS_level.tsv ./ 
+    python ${params.scripts_baseDir}/Checkm2_GUNC_combine_quality_pass.py quality_report.tsv GUNC.progenomes_2.1.maxCSS_level.tsv combined_report.tsv
+    mkdir bins_quality_passed
+    # get only at least medium quality genomes based on MIMAG and CheckM2
+    col_num=\$(head -1 combined_report.tsv | awk -F'\\t' '{for(i=1;i<=NF;i++) if (\$i=="medium_quality.pass") print i}')
+    awk -v col="\$col_num" -F'\\t' '\$col=="True" {print \$1}' combined_report.tsv | sed -e 's/\$/.fa/g' > passlist
+    #cat passlist
+    echo \$PWD
+    cp \$(grep -Ff passlist <(ls ${inputdir}/* )) bins_quality_passed
+    
+    """*/
+}
+    //awk -F'\t' '\$NF=="True" {print \$1}' combined_report.tsv  | sed -e 's/\$/.fa/g' > passlist
+
+process gtdbtk {
+    publishDir "${params.outdir}/gtdb_outdir_${params.run_id}", mode: 'copy'
+    //conda '$HOME/miniforge3/envs/gtdbtk-2.3.2'
+    cpus params.cpus
+
+    input:
+    path combined_report
+    path bins_quality_passed
+    
+    output:
+    
+    path "gtdb_outdir"
+    path "quality_taxonomy_combined.csv"
+    path "gtdbtk_r220.tsv"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate gtdbtk-2.4.0
+    export GTDBTK_DATA_PATH=${params.db_baseDir}/gtdb/release220/release220
+    time gtdbtk classify_wf \
+    --mash_db ${params.db_baseDir}/gtdb/release220/mash_220.db.msh --genome_dir ${bins_quality_passed}  -x fa  \
+    --cpus ${task.cpus} --pplacer_cpus ${task.cpus} --out_dir gtdb_outdir
+    awk -F'\\t' 'NR==1 || \$4=="True" {print \$0}'  ${combined_report} > quality_tmp.tsv
+    if [[ -f gtdb_outdir/gtdbtk.bac120.summary.tsv ]]; then
+        cat gtdb_outdir/gtdbtk.bac120.summary.tsv | grep classification | head -n 1 > gtdb_combined_tmp.tsv
+    elif [[ -f gtdb_outdir/gtdbtk.ar53.summary.tsv ]]; then
+        cat gtdb_outdir/gtdbtk.ar53.summary.tsv | grep classification | head -n 1 > gtdb_combined_tmp.tsv
+    fi
+    for file in gtdb_outdir/gtdbtk.*.summary.tsv; do
+        if [[ -f "\$file" ]]; then
+            cat "\$file" | tail -n+2  >> gtdb_combined_tmp.tsv
+        fi
+    done
+    cut -f1,2  gtdb_combined_tmp.tsv > gtdb_classification_only.tsv
+    mv gtdb_combined_tmp.tsv gtdbtk_r220.tsv
+
+    micromamba activate checkm2 
+    python ${params.scripts_baseDir}/GTDB_add2_check2gunc.py quality_tmp.tsv gtdb_classification_only.tsv quality_taxonomy_combined.csv
+    """
+}
+//TBU :
+//TBU : merge GTDB file together to output of GUNC +  Checkm2 
+// cat gtdb_outdir_${params.run_id}/gtdbtk.{bac120,ar53}.summary.tsv | grep classification  | head -n 1  |cut -f1,2 > gtdb_combined_tmp.tsv
+//     cat gtdb_outdir_${params.run_id}/gtdbtk.{bac120,ar53}.summary.tsv | grep -v classification |sort -u |cut -f1,2 >> gtdb_combined_tmp.tsv
+//     cat gtdb_outdir_${params.run_id}/gtdbtk.{bac120,ar53}.summary.tsv | grep classification | head -n1  > gtdbtk_r214_${params.run_id}.tsv
+//     cat gtdb_outdir_${params.run_id}/gtdbtk.{bac120,ar53}.summary.tsv | grep -v classification | sort -u >> gtdbtk_r214_${params.run_id}.tsv
+    
+    process createFinalFile {
+    publishDir "${params.outdir}", mode: 'copy',  overwrite: true
+
+    input:
+    path A
+    path quality_taxonomy_combined
+    path C
+    val existing_file
+
+    output:
+    path "quality_taxonomy_combined_final.csv"
+
+    script:
+    """
+    if [ -f "${existing_file}" ]; then
+        head -n 1 ${quality_taxonomy_combined} > quality_taxonomy_combined_final.csv
+        (tail -n +2 "${existing_file}"; tail -n +2 ${quality_taxonomy_combined}) | sort | uniq >> quality_taxonomy_combined_final.csv
+    else
+        cp ${quality_taxonomy_combined} quality_taxonomy_combined_final.csv
+    fi
+    """
+}
+
+//   if [ ! -f "${launchDir}/quality_taxonomy_combined.csv" ]; then
+//        head -n 1 quality_taxonomy_combined.csv > ${launchDir}/quality_taxonomy_combined.csv
+//    fi
+//    tail -n +2 quality_taxonomy_combined.csv >> ${launchDir}/quality_taxonomy_combined.csv
+
+// automatic detecion of metadata file format
+def detectFileFormat(file_path) {
+    if (file_path.endsWith('.tsv')) {
+        return 'tsv'
+    } else if (file_path.endsWith('.csv')) {
+        return 'csv'
+    } else {
+        // if no extension, check the first line
+        def firstLine = new File(file_path).withReader { reader -> reader.readLine() }
+        return firstLine.contains('\t') ? 'tsv' : 'csv'
+    }
+}
+
+
+process combineMetadata {
+    publishDir "${launchDir}", mode: 'copy'
+
+    input:
+    path quality_taxonomy_file
+    path metadata_file
+
+    output:
+    path "combined_metadata_quality_taxonomy_${params.run_id}.csv"
+    path "BIN_ASSESSMENT_metadata_merge_summary_${params.run_id}.log"
+
+    when:
+    params.metadata != null
+
+    script:
+    def format = detectFileFormat(metadata_file.toString())
+    def separator = format == 'tsv' ? 'tab' : 'comma'
+    """
+   
+    python ${params.scripts_baseDir}/combine_metadata_WMS_genome.py \
+        -g ${quality_taxonomy_file} \
+        -m ${metadata_file} \
+        -o combined_metadata_quality_taxonomy_${params.run_id}.csv \
+        -a ${params.accession_column}\
+        -d ${params.data_type} > BIN_ASSESSMENT_metadata_merge_summary_${params.run_id}.log 2>& 1 
+
+    lines=\$(wc -l < combined_metadata_quality_taxonomy_${params.run_id}.csv)
+    if [ \$lines -le 1 ]; then
+        echo "
+    ╔═══════════════════════════════════ ERROR ═══════════════════════════════════╗
+    ║                                                                             ║
+    ║  No data in your specified metadata matched with genome names.              ║
+    ║  Please check:                                                              ║
+    ║  1. The file format (detected as ${format})                                 ║
+    ║  2. The column index (--accession_column ${params.accession_column})        ║
+    ║                                                                             ║
+    ╚═════════════════════════════════════════════════════════════════════════════╝
+    " >> BIN_ASSESSMENT_metadata_merge_summary_${params.run_id}.log
+        cat BIN_ASSESSMENT_metadata_merge_summary_${params.run_id}.log
+        exit 1
+    fi
+
+    """
+}
+
+process create_metadata_summary {
+    publishDir "${launchDir}", mode: 'copy'
+
+    input:
+    path combined_metadata_file
+    path log
+
+    output:
+    path "metadata_column_BIN_ASSESSMENT_summary.tsv"
+
+    when:
+    params.metadata != null
+
+    script:
+    """
+    #!/usr/bin/env python3
+    import pandas as pd
+
+    df = pd.read_csv("${combined_metadata_file}", sep=',', header=0)
+
+    summary = pd.DataFrame({
+        'Column_Index': range(1,len(df.columns)+1),
+        'Column_Name': df.columns
+    })
+
+    summary.to_csv('metadata_column_BIN_ASSESSMENT_summary.tsv', sep='\t', index=False)
+    """
+}
+
+
+
+
+workflow {
+    input_ch = Channel.fromPath(params.inputDir, type: 'dir', checkIfExists: true)
+    if (params.metadata) {
+        
+        def metadata_file = file(params.metadata)
+        if (!metadata_file.exists()) {
+            error """
+    ${ANSI_RED}ERROR: Metadata file does not exist: ${params.metadata}
+    Please verify the file path is correct.${ANSI_RESET}
+    """
+        } else {
+            log.info "Using metadata file: ${metadata_file.toAbsolutePath()}"
+        }
+    }
+
+
+    prepared_bins = prepareInputFiles(input_ch)
+
+    checkm2_result = runCheckM2(prepared_bins)
+    gunc2_result = runGUNC(checkm2_result)
+    qc_filter_result = combineFiles(checkm2_result, gunc2_result, prepared_bins)
+    result_ch=gtdbtk(qc_filter_result)
+    genome_metadata = createFinalFile(result_ch,"${params.outdir}/quality_taxonomy_combined_final.csv")
+
+    if (params.metadata) {
+        def metadata_file = file(params.metadata)
+        if (!metadata_file.exists()) {
+            error "ERROR: Metadata file does not exist: ${params.metadata}"
+        } else {
+            // Use the basename and stageInMode 'copy' to properly stage the file
+            metadata= file(params.metadata)
+            //metadata_ch = Channel.fromPath(metadata, checkIfExists: true)
+      
+            combined_metadata = combineMetadata(genome_metadata, metadata)
+            create_metadata_summary(combined_metadata)
+        }
+    }
+
+    // if (params.metadata) {
+    //     //def metadata_file = file(params.metadata)
+    //     metadata_ch = Channel.fromPath(params.metadata, checkIfExists: true)
+    //     //metadata_ch = Channel.fromPath(metadata_file, checkIfExists: true)
+    //     combined_metadata = combineMetadata(genome_metadata, metadata_ch)
+    //     create_metadata_summary(combined_metadata)
+    // }    
+}
+#!/usr/bin/env nextflow
+// this script was optimized apptainer in any compurational environment. 
+nextflow.enable.dsl=2
+//params.db_baseDir = "/scratch/tools/microbiome_analysis/database"
+params.db_baseDir = "/opt/database"
+
+params.scripts_baseDir = "/scratch/tools/microbiome_analysis/scripts"
+
+params.outdir_Base = "${launchDir}" // modify this if you want output files stored any other directory. 
+params.inputDir = "${params.outdir_Base}/results/metagenome/ASSEMBLY_BINNING/final_bins"
+//params.metadata ="${params.inputDir}/../final_report/quality_taxonomy_combined_final.csv"
+params.metadata ="${launchDir}/selected_metadata.csv"
+// metadata loc should be modified. 
+params.metacol =""
+params.samplecol = 1
+params.module_completeness = 0.5
+//params.kofam_db = 
+params.cpus = 40
+params.pan_identity=0.8
+params.pan_coverage=0.8
+params.kingdom="bacteria"
+
+params.kofamscan_eval= 0.00001 
+params.VFDB_identity=50
+params.VFDB_coverage= 80
+params.VFDB_e_value = 1e-10
+
+params.CAZyme_hmm_eval=1e-15
+params.CAZyme_hmm_cov=0.35
+
+params.run_drep = true
+params.drep_ani = 0.995
+params.drep_cov = 0.3
+params.drep_ignore_quality = true
+params.drep_algorithm = "skani"
+
+
+def current_time = new Date().format('yyyyMMddHHmmss')
+
+//params.outdir = "${params.outdir_Base}/results/metagenome/COMPARATIVE_ANNOTATION"
+params.run_name = current_time
+params.outdir = "${params.outdir_Base}/results/metagenome/COMPARATIVE_ANNOTATION/${params.run_name}"
+params.visualization_results = "${params.outdir}/visualization_results" 
+params.annotation_results =  "${params.outdir}/annotation_results" 
+//params.gene_matrix = null // gene_PA or gene_count
+
+def logo_file = file("${workflow.projectDir}/../scripts/logo.txt")
+//def logo_file = file('logo.txt')
+if (logo_file.exists()) {
+    custom_logo = logo_file.text
+    println(custom_logo)
+} else {
+    custom_logo = "Where is the face of metaFun?? :l"
+    println(custom_logo)
+}
+println("\nVisit documentation to find out description of this workflow: \n")
+println("https://metafun-doc.readthedocs.io/en/latest/workflows/COMPARATIVE_ANNOTATION.html\n")
+
+def checkProcessOutput(String outputPath) {
+    return file(outputPath).exists()
+}
+
+
+// def determineRunMode() {
+//     def annotationExists = file("${params.annotation_results}").exists()
+//     def metadataExists = params.metadata != null
+//     def metacolExists = params.metacol != null
+
+//     if (annotationExists && metadataExists && metacolExists) {
+//         return 'visualize'
+//     } else if (metadataExists && metacolExists) {
+//         return 'full'
+//     } else {
+//         return 'annotate'
+//     }
+// }
+//params.run_mode = determineRunMode() //'full', 'annotate', 'visualize'
+
+// color declaration 
+def ANSI_RESET = "\u001B[0m"
+def ANSI_BLUE = "\033[38;2;78;149;217m"
+def ANSI_YELLOW = "\u001B[33m"
+def ANSI_GREEN = "\u001B[32m"
+def ANSI_CYAN = "\033[38;2;0;255;255m"
+def ANSI_RED = "\u001B[31m"
+def ANSI_ORANGE = "\033[38;2;255;149;0m"
+
+
+params.help = null
+if (params.help) {
+    log.info """
+Usage:
+    nextflow run nf_scripts/${ANSI_BLUE}COMPARATIVE_ANNOTATION_apptainer.nf${ANSI_RESET}  --metadata "\${your_metadata}" --metacol "\${your_metacol}"
+${ANSI_YELLOW}COMPARATIVE_ANNOTATION : Comparative genomic analysis workflow${ANSI_RESET}
+=========================================================
+ ${ANSI_GREEN}PPanGGOLiN${ANSI_RESET}        : Identity = ${params.pan_identity}, Coverage = ${params.pan_coverage}
+ ${ANSI_GREEN}KEGG${ANSI_RESET}               : Module presence threshold for presence = ${params.module_completeness}, E-value = ${params.kofamscan_eval}
+ ${ANSI_GREEN}VFDB${ANSI_RESET}               : Identity = ${params.VFDB_identity}, Coverage = ${params.VFDB_coverage}, E-value = ${params.VFDB_e_value}
+ ${ANSI_GREEN}CARD${ANSI_RESET}               : Using RGI
+ ${ANSI_GREEN}dbCAN${ANSI_RESET}              : Using run_dbcan4
+ ${ANSI_GREEN}eggNOG${ANSI_RESET}             : Using eggnog-mapper
+
+
+CPUs used          : ${ANSI_BLUE}${params.cpus}${ANSI_RESET}
+Metadata           : ${ANSI_BLUE}${params.metadata}${ANSI_RESET}
+Metadata column    : ${ANSI_BLUE}${params.metacol}${ANSI_RESET}
+Input directory    : ${ANSI_BLUE}${params.inputDir}${ANSI_RESET}
+Output directory   : ${ANSI_BLUE}${params.outdir}${ANSI_RESET}
+
+Additional options:
+--pan_identity     : PPanGGOLiN identity threshold (default: ${ANSI_BLUE}${params.pan_identity}${ANSI_RESET})
+--pan_coverage     : PPanGGOLiN coverage threshold (default: ${ANSI_BLUE}${params.pan_coverage}${ANSI_RESET})
+--module_completeness : KEGG module completeness threshold (default: ${ANSI_BLUE}${params.module_completeness}${ANSI_RESET})
+--kofamscan_eval : KEGG KO e-value threshold (default: ${ANSI_BLUE}${params.kofamscan_eval}${ANSI_RESET})
+--kingdom          : Kingdom for PPPanGGOLiN (default: ${ANSI_BLUE}${params.kingdom}${ANSI_RESET}). Choose bacteria or archaea
+--VFDB_identity : Virulence factor identity threshold (default: ${ANSI_BLUE}${params.VFDB_identity}${ANSI_RESET} )
+--VFDB_coverage : Virulence factor identity threshold (default: ${ANSI_BLUE}${params.VFDB_coverage}${ANSI_RESET})
+--VFDB_e_value : Virulence factor e_value threshold (default: ${ANSI_BLUE}${params.VFDB_e_value}${ANSI_RESET})
+--CAZyme_hmm_eval  : CAZyme hmm e_value threshold (default: ${ANSI_BLUE}${params.CAZyme_hmm_eval}${ANSI_RESET})
+--CAZyme_hmm_cov  : CAZyme hmm coverage threshold (default: ${ANSI_BLUE}${params.CAZyme_hmm_cov}${ANSI_RESET})
+
+"""
+    exit 0
+}
+
+if (params.metacol == null || params.metacol == "" || params.metacol.toInteger() == 0) {
+    log.warn "metacol is not specified. Visualization step will be skipped. Only other processes will be executed."
+    params.run_visualization = false
+} else {
+    params.run_visualization = true
+}
+
+
+// if (params.metacol == null || params.metacol == 0) {
+//     log.error 'Metadata column parameter --metacol cannot be empty.\n' + 
+//                'Metadata column should be selected. '
+//                'You can specify by --metacol {column number} ' + 
+//                'You can check {column number} by using  $head -n1 selected_metadata.csv | tr "," "\n" | nl'
+//     System.exit(1) // Exits the script with an error status
+// }
+
+if (!new File(params.inputDir).exists()) {
+    error """Input directory does not exist: ${params.inputDir}.\n
+    Please specify a valid directory with --inputDir.\n
+    
+    You would select your genomes with genome metadata file and script \n   : select_genomes_toCOMPARATIVE_ANNOTATION.sh. \n
+    
+    Your combined_metadata.csv   could be generated using python script.
+    Suppose second column of ### metageome_metadata.csv ### is WMS accession ID extracted from paired end metagenome file name 
+    python combine_metadata_WMS_genome.py -g  quality_taxonomy_combined.csv -m metageome_metadata.csv -o combined_metadata.csv -a 2
+
+    sh select_genomes_toCOMPARATIVE_ANNOTATION.sh \"s__Bacteroides uniformis\"
+
+    You need to also provide metadata to program if you do not want to use select_genomes_toCOMPARATIVE_ANNOTATION.sh
+"""
+} else {
+    // Check if the directory is empty
+    if (new File(params.inputDir).list().length == 0) {
+        error "Input directory is empty: ${params.inputDir}. Please specify a directory with --inputDir : bin directory."
+    }
+}
+
+//######################
+// help log of comparative annotation . 
+
+
+
+log.info """\
+
+===========================================
+${ANSI_BLUE}COMPARATIVE_ANNOTATION${ANSI_RESET} - Functional Comparison of MAGs
+===========================================
+(Apptainer Container with Nextflow)
+
+Key Features:
+  ✓ KEGG Orthology annotation (KofamScan)
+  ✓ Orthology assignment and functional annotation (eggNOG)
+  ✓ Virulence factor annotation (VFDB)
+  ✓ Antimicrobial resistance gene annotation (CARD/RGI)
+  ✓ Carbohydrate-Active enzyme annotation (dbCAN)
+  ✓ Pangenome analysis (PPanGGOLiN)
+  ✓ Genome similarity and subspecies dereplication (skani/PCoA/dRep)
+
+
+${ANSI_RED}Required Parameters:${ANSI_RESET}
+------------------
+${ANSI_RED}--inputDir${ANSI_RESET}         : Directory containing bins from ASSEMBLY_BINNING or  your own genomes
+                     Typically output from ASSEMBLY_BINNING (final_bins)
+${ANSI_RED}--metadata${ANSI_RESET}         : CSV file with additional metadata for samples
+                     Typically output from GENOME_SELECTOR (genome_selector_result.csv)
+${ANSI_RED}--metacol${ANSI_RESET}          : Column number in metadata file to use for grouping
+
+
+Optional Parameters:
+------------------
+${ANSI_YELLOW}--module_completeness${ANSI_RESET} : KEGG module completeness threshold (default: ${params.module_completeness})
+${ANSI_YELLOW}--pan_identity${ANSI_RESET}     : Identity threshold for PPanGGOLiN (default: ${params.pan_identity})
+${ANSI_YELLOW}--pan_coverage${ANSI_RESET}     : Coverage threshold for PPanGGOLiN (default: ${params.pan_coverage})
+${ANSI_YELLOW}--kofamscan_eval${ANSI_RESET}   : E-value threshold for KofamScan (default: ${params.kofamscan_eval})
+${ANSI_YELLOW}--run_drep${ANSI_RESET}         : Run dereplication (default: ${params.run_drep})
+${ANSI_YELLOW}--drep_ani${ANSI_RESET}         : ANI threshold for dereplication (default: ${params.drep_ani})
+${ANSI_YELLOW}--drep_algorithm${ANSI_RESET}   : Algorithm for ANI calculation (default: ${params.drep_algorithm})
+${ANSI_YELLOW}--kingdom${ANSI_RESET}          : Kingdom for annotation (default: ${params.kingdom})
+${ANSI_YELLOW}--cpus${ANSI_RESET}             : Number of CPUs to use (default: ${params.cpus})
+
+
+${ANSI_CYAN}Database Information:${ANSI_RESET}
+------------------
+${ANSI_CYAN}KEGG${ANSI_RESET}               : KofamScan profiles and KEGG Orthology database
+${ANSI_CYAN}eggNOG${ANSI_RESET}             : eggNOG v5.0 orthologous groups and annotations
+${ANSI_CYAN}VFDB${ANSI_RESET}               : Virulence Factor Database (${params.VFDB_identity}% identity, ${params.VFDB_coverage}% coverage)
+${ANSI_CYAN}CARD${ANSI_RESET}               : Comprehensive Antibiotic Resistance Database
+${ANSI_CYAN}dbCAN${ANSI_RESET}              : CAZyme annotation (${params.CAZyme_hmm_eval} e-value, ${params.CAZyme_hmm_cov} coverage)
+${ANSI_CYAN}PPanGGOLiN${ANSI_RESET}         : Pangenome partitioning for ${params.kingdom}
+
+
+${ANSI_CYAN}Output Directories:${ANSI_RESET}
+------------------
+${ANSI_CYAN}- annotation_results/${ANSI_RESET}   : Individual genome annotations
+${ANSI_CYAN}- visualization_results/${ANSI_RESET} : Comparative analysis and visualizations
+
+${params.run_drep ? ANSI_YELLOW + 'dRep will be run for genome dereplication with ' + params.drep_algorithm + ' algorithm' + ANSI_RESET : ANSI_YELLOW + 'dRep will be skipped' + ANSI_RESET}
+
+\033[38;2;180;180;180mNote:\033[0m Results can be visualized with: 
+${ANSI_ORANGE}INTERACTIVE_COMPARATIVE${ANSI_RESET}
+"""
+.stripIndent(true)
+
+    // Pangenome analysis, species functional annotation 
+    // =================================================
+    // PPPanGGOLiN option          : Identity = ${params.pan_identity}, 
+    //                             Coverage = ${params.pan_coverage}
+    //                             modify it if you want by specifying --pan_identity [0~1] --pan_coverage [0~1] in command line 
+    // KEGG module present threshold : ${params.module_completeness}
+    //                             modify threshold if you want to change it : --module_completeness [0~1]
+    
+    // """
+    // .stripIndent(true)
+
+
+process prepare_genomes {
+    publishDir "${params.outdir}/selected_genomes", mode: 'copy'
+
+    input:
+    path metadata_file
+    path input_dir
+
+    output:
+    path "selected_genomes${params.run_name}"
+
+    script:
+    """
+    mkdir -p selected_genomes${params.run_name}
+    awk -F',' 'NR>1 {print \$${params.samplecol}}' ${metadata_file} | while read genome; do
+        if [ -f "${input_dir}/\${genome}.fa" ]; then
+            cp "${input_dir}/\${genome}.fa" selected_genomes${params.run_name}/
+        else
+            echo "Warning: \${genome}.fa not found in ${input_dir}" >&2
+        fi
+    done
+    """
+}
+
+
+
+// create metadata header information file.
+process create_metadata_summary {
+    publishDir "${params.outdir}/annotation_results", mode: 'copy'
+    //publishDir "${launchDir}", mode: 'copy'
+    input:
+    path metadata_file
+    output:
+    path "metadata_column_COMPARATIVE_ANNOTATION_summary.tsv"
+
+    // when:
+    // params.metacol != "" && params.metacol.toInteger() > 0
+
+    script:
+    """
+    #!/usr/bin/env python3
+    import pandas as pd
+
+    df = pd.read_csv("${metadata_file}", sep=',', header=0)
+
+    summary = pd.DataFrame({
+        'Column_Index': range(len(df.columns)),
+        'Column_Name': df.columns
+    })
+
+    summary.to_csv('metadata_column_COMPARATIVE_ANNOTATION_summary.tsv', sep='\t', index=False)
+    """
+}
+
+process run_skani_annotation {
+    publishDir "${params.annotation_results}/ani", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(genome_dir)
+
+    output:
+    path "skani_fullmatrix"
+    path "skani_ANI_dist.tsv"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    skani triangle *.fa -t ${task.cpus} --full-matrix | tail -n +2 | sed -e 's/.fa//g' > skani_fullmatrix
+
+    skani triangle *.fa -t ${task.cpus} --full-matrix --distance > test
+    #skani triangle *.fa -t ${task.cpus} --full-matrix -l rl --distance > test
+    cut -f1 test | tail -n+2 | tr '\n' '\t' | sed -e 's/^/\t/g' | sed -e 's/\t\$/\\n/' > skani_ANI_dist.tsv
+    tail -n+2 test >> skani_ANI_dist.tsv
+    sed -i 's/\\.fa//g' skani_ANI_dist.tsv
+    rm test
+
+
+    """
+}
+process run_skani_visualization {
+    publishDir "${params.visualization_results}/ani/column_${params.metacol}", mode: 'copy'
+    when: params.run_visualization
+
+    input:
+    path(skani_fullmatrix)
+    path(metadata_file)
+
+    output:
+    path "heatmap_skani.pdf"
+    path "skani_interactive"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/skani_visualization.R \
+    -i ${skani_fullmatrix} -m ${metadata_file} -mc ${params.metacol} -out heatmap_skani.pdf -out_html skani_interactive
+    """
+}
+
+process run_skani {
+    publishDir "${params.outdir}/ani" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    cpus params.cpus
+
+    input:
+    path(genome_dir)
+    path metadata_file 
+    output:
+    path "*"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    skani triangle *.fa -t ${task.cpus}  --full-matrix | tail -n +2 | sed -e 's/.fa//g' > skani_fullmatrix
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/skani_visualization.R \
+    -i skani_fullmatrix -m ${metadata_file}  -mc ${params.metacol} -out heatmap_skani.pdf -out_html skani_interactive
+
+    """
+}
+
+
+
+
+process run_prokka {
+    publishDir "${params.outdir}/prokka" , mode : 'copy'
+    //container = 'docker://staphb/prokka:latest'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    //cpus params.cpus
+
+    input:
+    tuple val(id), path(genome)
+    output:
+    path "*"
+
+    script:
+    """
+    #eval "\$(micromamba shell hook --shell bash)"
+    #micromamba  activate prokka
+    #export TMPDIR='/tmp/\${uuidgen()}'
+    #export JAVA_OPTS="-XX:-UsePerfData -Djava.io.tmpdir=\$TMPDIR"
+    JAVA_TOOL_OPTIONS="-Xlog:disable -Xlog:all=warning:stderr:uptime,level,tags"
+
+    prokka --prefix ${id} --noanno --cpus 2 ${genome} --compliant 
+    #--centre  MGSSB 
+    """
+}
+//prokka --prefix ${id} --noanno --cpus ${task.cpus} ${launchDir}/${params.inputDir}/${genome} --centre  MGSSB --compliant 
+process run_panaroo {
+    publishDir "${params.outdir}" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+
+    input:
+    path(prokka_dir)
+    output:
+    path "*"
+
+    script:
+    """
+    source activate COMPARATIVE_ANNOTATION
+    panaroo -i */*.gff -o panaroo_result --clean-mode moderate --remove-invalid-genes \
+    -c 0.9 -f 0.5 --merge_paralogs --threads ${task.cpus}
+    """
+}
+
+
+process run_ppanggolin {
+    publishDir "${params.outdir}" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    cpus params.cpus
+
+    input:
+    path(prokka_dir)
+    output:
+    path "*"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    ls */*.gff | while read gff_file; do 
+    printf "%s\t%s\n" "\$(basename "\$gff_file" .gff)" "\$(realpath "\$gff_file")"
+    done > gff_paths.tsv
+    ppanggolin 
+    ppanggolin all --anno gff_paths.tsv -o ppanggolin_result --cpu ${task.cpus}\
+    --coverage ${params.pan_identity} --identity ${params.pan_coverage} \
+    --kingdom  ${params.kingdom} --rarefaction
+    cd ppanggolin_result 
+    ppanggolin fasta -p pangenome.h5 --prot_families all -o pan_genes  --genes all 
+    python ${params.scripts_baseDir}/make_gene_count_table_ppanggolin205.py ./
+    # genome_id_linking.tsv, gene_count_matrix.tsv is generated 
+    """
+}
+//#panaroo -i */*.gff -o ppanggorin_result --clean-mode moderate --remove-invalid-genes \
+//    #-c 0.9 -f 0.5 --merge_paralogs --threads ${params.cpus}
+//find "\$(pwd)" -type f -name "*.gff" -exec sh -c 'echo -e "\$(basename {} .gff)\t\$(realpath "{}")"' \; > gff_paths.tsv    
+
+process run_genePA_cluster {
+    publishDir "${params.outdir}/genePA_cluster" , mode : 'copy'
+    cpus params.cpus
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+
+
+
+    input:
+    path(ppanggolin_dir)
+    path metadata 
+    output:
+    path("pcoa_plot_interactive.html")    
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate scoary-2
+    python ${params.scripts_baseDir}/genome_PA_stat.py --cpus ${task.cpus} --metadata ${params.metadata}
+
+    """
+
+}
+
+
+process run_kofamscan_annotation {
+    publishDir "${params.annotation_results}/kofamscan", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("ko_matrix.csv")
+    path("KO_definition_GeneID_countgenomes.csv")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    
+    echo running kofamscan
+    time exec_annotation \
+    -o kofamscan_result --cpu ${task.cpus} --e-value ${params.kofamscan_eval}\
+    -c ${params.db_baseDir}/kofam/27Nov2023/config-template.yml \
+    -f mapper ppanggolin_result/pan_genes/all_protein_families.faa
+    
+    python ${params.scripts_baseDir}/kofam_to_geneID_KO_ppanggolin205.py \
+    -i ppanggolin_result/matrix.csv -o output_gene_pa_ko.csv
+#KO_definition_GeneID_countgenomes.py generate KO_definition_GeneID_countgenomes.csv 
+    python ${params.scripts_baseDir}/KO_definition_GeneID_countgenomes.py -i  output_gene_pa_ko.csv \
+    -o KO_definition_GeneID_countgenomes.csv -k ${params.db_baseDir}/kofam/27Nov2023/ko_list
+
+    python ${params.scripts_baseDir}/KO_Genome_long2matrix_ppanggolin205.py \
+    -i output_gene_pa_ko.csv -o ko_matrix.csv
+    """
+}
+
+process run_kofamscan_visualization {
+    publishDir "${params.visualization_results}/kofamscan", mode: 'copy'
+    publishDir "${params.visualization_results}/kofamscan/column_${params.metacol}", mode: 'copy'
+    when: params.run_visualization
+    
+    input:
+    path(ko_matrix)
+    path(metadata_file)
+    
+    output:
+    path("KEGG_module_visualization_shiny")
+    path("KEGG_module_completeness.csv")
+    path("heatmap_KEGG.pdf")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/KO_module_visualization_apptainer.R \
+    -i ${ko_matrix} -m ${metadata_file} -n ${params.metacol} -mc ${params.module_completeness} \
+    -out_table KEGG_module_completeness.csv -out_html KEGG_module_visualization_shiny
+    """
+}
+
+
+process run_kofamscan {
+    publishDir "${params.outdir}/kofamscan" , mode : 'copy'
+    cpus params.cpus
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+
+    input:
+    path(ppanggolin_dir)
+    path metadata_file 
+
+    output:
+    path("ko_matrix.csv")
+    path("KEGG_module_visualization_shiny")
+    path("KEGG_module_completeness.csv")
+    path("heatmap_KEGG.pdf")
+    //path("pangene_kofamscan_KO.tsv")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    #ppanggolin fasta -p ppanggolin_result/pangenome.h5 -o pan_faa  --genes all 
+    #transeq panaroo_result/pan_genome_reference.fa pan_genome_reference.faa
+    #sed -i "s/_[0-9]\$//g" pan_genome_reference.faa
+    #micromamba activate kofamscan
+    #time /scratch/tools/microbiome_analysis/program/kofam_scan-1.3.0/exec_annotation
+    
+    #sed -i "s|/scratch/tools/microbiome_analysis/database/kofam/27Nov2023/profiles|/opt/database/kofam/27Nov2023/profiles|g" ${params.db_baseDir}/kofam/27Nov2023/config-template.yml
+    #sed -i "s|/scratch/tools/microbiome_analysis/database/kofam/27Nov2023/ko_list|/opt/database/kofam/27Nov2023/ko_list|g" ${params.db_baseDir}/kofam/27Nov2023/config-template.yml
+    echo running kofamscan
+    time exec_annotation \
+    -o kofamscan_result --cpu ${task.cpus}  --e-value 0.00001 \
+    -c ${params.db_baseDir}/kofam/27Nov2023/config-template.yml \
+    -f mapper ppanggolin_result/pan_genes/all_protein_families.faa
+    
+    head kofamscan_result
+    #sed -i  's/_[0-9]*\t/\t/g' kofamscan_result # this is for panaroo
+    #sed -i 's/_[0-9]*\$//g' kofamscan_result # this is for panaroo
+    #micromamba activate COMPARATIVE_ANNOTATION
+    
+    # this is for panaroo
+    #python ${params.scripts_baseDir}/kofam_to_geneID_KO.py \
+    #-i panaroo_result/gene_presence_absence.csv -o output_gene_pa_ko.csv
+
+    # for ppanggolin205
+    python ${params.scripts_baseDir}/kofam_to_geneID_KO_ppanggolin205.py \
+    -i ppanggolin_result/matrix.csv -o output_gene_pa_ko.csv
+
+    #python ${params.scripts_baseDir}/KO_Genome_long2matrix.py 
+    python ${params.scripts_baseDir}/KO_Genome_long2matrix_ppanggolin205.py \
+    -i output_gene_pa_ko.csv  -o ko_matrix.csv
+
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/KO_module_visualization_apptainer.R \
+    -i  ko_matrix.csv -m ${metadata_file}  -n ${params.metacol} -mc ${params.module_completeness}\
+    -out_table KEGG_module_completeness.csv -out_html KEGG_module_visualization_shiny
+    """
+}
+
+// process run_VFDB_annotation_tmp {
+//     publishDir "${params.annotation_results}/VFDB", mode: 'copy'
+//     cpus params.cpus
+
+//     input:
+//     path(ppanggolin_dir)
+
+//     output:
+//     path("pangene_vfdb_result.txt"), emit: vfdb_result
+//     path("gene_PA_VFDB_added.csv"), emit: gene_pa    
+    
+
+//     script:
+//     """
+//     eval "\$(micromamba shell hook --shell bash)"
+//     micromamba activate COMPARATIVE_ANNOTATION
+//     micromamba activate rgi603
+//     diamond blastp -d ${params.db_baseDir}/VFDB/VFDB_setB_prot_Aug2023.dmnd \
+//     -q ppanggolin_result/pan_genes/all_protein_families.faa -o pangene_vfdb_result.txt -f 6 --max-target-seqs 1 --id ${params.VFDB_identity} \
+//     --subject-cover ${params.VFDB_coverage} -e ${params.VFDB_e_value} 
+
+//     python ${params.scripts_baseDir}/add_VFDB_togenePA.py \
+//     -d pangene_vfdb_result.txt -g ppanggolin_result/gene_presence_absence.Rtab \
+//     -va ${params.db_baseDir}/VFDB/VFDB_setB_all_informatoin.tsv \
+//     -o gene_PA_VFDB_added.csv
+//     """
+// }
+// process run_VFDB_visualization_tmp {
+//     publishDir "${params.visualization_results}/VFDB", mode: 'copy'
+
+//     input:
+//     path(gene_PA_VFDB_added)
+//     path(metadata_file)
+
+//     output:
+//     path("heatmap_VFDB.pdf")
+//     path("VFDB_interactive")
+
+//     script:
+//     """
+//     eval "\$(micromamba shell hook --shell bash)"
+//     micromamba activate R432_environment
+//     Rscript ${params.scripts_baseDir}/VFDB_visualization.R \
+//     -i ${gene_PA_VFDB_added} -m ${metadata_file} -mc ${params.metacol} -out_html VFDB_interactive
+//     """
+// }
+
+//process run_VFDB_count_annotation {
+process run_VFDB_annotation {
+    publishDir "${params.annotation_results}/VFDB", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("pangene_vfdb_result.txt"), emit: vfdb_result
+    path("gene_PA_VFDB_added.csv"), emit: vfdb_gene_pa    
+    path("gene_count_VFDB_added.csv"), emit: vfdb_gene_count
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    micromamba activate rgi603
+    diamond blastp -d ${params.db_baseDir}/VFDB/VFDB_setB_prot_Aug2023.dmnd \
+    -q ppanggolin_result/pan_genes/all_protein_families.faa -o pangene_vfdb_result.txt -f 6 --max-target-seqs 1 --id ${params.VFDB_identity} \
+    --subject-cover ${params.VFDB_coverage} -e ${params.VFDB_e_value} 
+
+
+    python ${params.scripts_baseDir}/add_VFDB_togenePA.py \
+    -d pangene_vfdb_result.txt -g ppanggolin_result/gene_presence_absence.Rtab \
+    -va ${params.db_baseDir}/VFDB/VFDB_setB_all_informatoin.tsv \
+    -o gene_PA_VFDB_added.csv
+
+
+    python ${params.scripts_baseDir}/add_VFDB_togenePA.py \
+    -d pangene_vfdb_result.txt \
+    -g ppanggolin_result/gene_count_matrix.tsv \
+    -va ${params.db_baseDir}/VFDB/VFDB_setB_all_informatoin.tsv \
+    -o gene_count_VFDB_added.csv     
+    """
+}
+//process run_VFDB_count_visualization {
+
+process run_VFDB_visualization {
+    publishDir "${params.visualization_results}/VFDB", mode: 'copy'
+    //publishDir "${params.visualization_results}/VFDB/${params.gene_matrix}_column_${params.metacol}", mode: 'copy'
+    when: params.run_visualization
+
+    input:
+    path(gene_PA_VFDB_added)
+    path(gene_count_VFDB_added)
+    path(metadata_file)
+
+    output:
+    //path("heatmap_VFDB.pdf")
+    //path("VFDB_interactive")
+    path("heatmap_VFDB_gene_PA_metadata${params.metacol}th_col.pdf")
+    path("VFDB_interactive_gene_PA_metadata${params.metacol}th_col")
+    path("heatmap_VFDB_gene_count_metadata${params.metacol}th_col.pdf")
+    path("VFDB_interactive_gene_count_metadata${params.metacol}th_col")
+
+    script:
+    //def input_file = params.gene_matrix == 'gene_PA' ? gene_PA_VFDB_added : gene_count_VFDB_added
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+        # Run visualization for gene_PA
+    Rscript ${params.scripts_baseDir}/VFDB_visualization.R \
+    -i ${gene_PA_VFDB_added} -m ${metadata_file} -mc ${params.metacol} -out_html VFDB_interactive_gene_PA_metadata${params.metacol}th_col
+    mv heatmap_VFDB.pdf heatmap_VFDB_gene_PA_metadata${params.metacol}th_col.pdf
+
+    # Run visualization for gene_count
+    Rscript ${params.scripts_baseDir}/VFDB_visualization.R \
+    -i ${gene_count_VFDB_added} -m ${metadata_file} -mc ${params.metacol} -out_html VFDB_interactive_gene_count_metadata${params.metacol}th_col
+    mv heatmap_VFDB.pdf heatmap_VFDB_gene_count_metadata${params.metacol}th_col.pdf
+    """
+}
+ // Rscript ${params.scripts_baseDir}/VFDB_visualization.R \
+  //     -i ${gene_count_VFDB_added} -m ${metadata_file} -mc ${params.metacol} -out_html VFDB_interactive
+
+process run_VFDB {
+    publishDir "${params.outdir}/VFDB" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+    //path("${params.metadata}")
+    path metadata_file 
+
+
+    output:
+    path("pangene_vfdb_result.txt")
+    path("gene_PA_VFDB_added.csv")
+    path("heatmap_VFDB.pdf")
+    path("VFDB_interactive")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    #transeq panaroo_result/pan_genome_reference.fa pan_genome_reference.faa
+    #sed -i "s/_[0-9]\$//g" pan_genome_reference.faa
+    #ppanggolin_result/pan_genes/all_protein_families.faa
+    micromamba activate rgi603
+    diamond blastp -d ${params.db_baseDir}/VFDB/VFDB_setB_prot_Aug2023.dmnd \
+    -q ppanggolin_result/pan_genes/all_protein_families.faa -o pangene_vfdb_result.txt -f 6 --max-target-seqs 1 --id 50 \
+    --subject-cover 80 -e 1e-10 
+
+    python ${params.scripts_baseDir}/add_VFDB_togenePA.py \
+    -d pangene_vfdb_result.txt -g ppanggolin_result/gene_presence_absence.Rtab \
+    -va ${params.db_baseDir}/VFDB/VFDB_setB_all_informatoin.tsv \
+    -o gene_PA_VFDB_added.csv
+
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/VFDB_visualization.R \
+    -i  gene_PA_VFDB_added.csv -m ${metadata_file} -mc ${params.metacol} -out_html VFDB_interactive
+
+    """
+}
+
+process run_rgi_CARD_annotation {
+    publishDir "${params.annotation_results}/CARD", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("pangene_rgi_CARD_result.txt"), emit: rgi_result
+    path("gene_PA_CARD_added.csv"), emit: card_gene_pa
+    path("gene_count_CARD_added.csv"), emit: card_gene_count
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    micromamba activate rgi603
+    rgi load -i ${params.db_baseDir}/CARD/card.json --local 
+    rgi main -i ppanggolin_result/pan_genes/all_protein_families.faa -o pangene_rgi_CARD_result --clean  \
+    -t protein -n ${task.cpus} --include_nudge --local 
+
+    python ${params.scripts_baseDir}/add_rgi_togenePA.py -i pangene_rgi_CARD_result.txt \
+    -o gene_PA_CARD_added.csv -r ${params.db_baseDir}/CARD/aro_index.tsv \
+    -gpa ppanggolin_result/gene_presence_absence.Rtab
+
+    python ${params.scripts_baseDir}/add_rgi_togenePA.py -i pangene_rgi_CARD_result.txt \
+    -o gene_count_CARD_added.csv -r ${params.db_baseDir}/CARD/aro_index.tsv \
+    -gpa ppanggolin_result/gene_count_matrix.tsv    
+    """
+}
+
+process run_rgi_CARD_visualization {
+    publishDir "${params.visualization_results}/CARD", mode: 'copy'
+    when: params.run_visualization
+    input:
+    path(gene_PA_CARD_added)
+    path(gene_count_CARD_added)
+    path(metadata_file)
+
+    output:
+    path("heatmap_CARD_gene_PA_metadata${params.metacol}th_col.pdf")
+    path("CARD_interactive_gene_PA_metadata${params.metacol}th_col")
+    path("heatmap_CARD_gene_count_metadata${params.metacol}th_col.pdf")
+    path("CARD_interactive_gene_count_metadata${params.metacol}th_col")
+
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    
+    # Run visualization for gene_PA
+    Rscript ${params.scripts_baseDir}/CARD_visualization.R \
+    -i ${gene_PA_CARD_added} -m ${metadata_file} -mc ${params.metacol} -out_html CARD_interactive_gene_PA_metadata${params.metacol}th_col
+    mv heatmap_CARD.pdf heatmap_CARD_gene_PA_metadata${params.metacol}th_col.pdf
+
+    # Run visualization for gene_count
+    Rscript ${params.scripts_baseDir}/CARD_visualization.R \
+    -i ${gene_count_CARD_added} -m ${metadata_file} -mc ${params.metacol} -out_html CARD_interactive_gene_count_metadata${params.metacol}th_col
+    mv heatmap_CARD.pdf heatmap_CARD_gene_count_metadata${params.metacol}th_col.pdf
+    """
+}
+
+
+
+
+process run_rgi_CARD {
+    publishDir "${params.outdir}/CARD" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+    //path("${params.metadata}")
+    path metadata_file 
+
+    output:
+    path("pangene_rgi_CARD_result.txt")
+    path("gene_PA_CARD_added.csv")
+    path("heatmap_CARD.pdf")
+    path("CARD_interactive")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate COMPARATIVE_ANNOTATION
+    #transeq panaroo_result/pan_genome_reference.fa pan_genome_reference.faa
+    #sed -i "s/_[0-9]\$//g" pan_genome_reference.faa
+    #sed -i "s/\\*\$//g" pan_genome_reference.faa
+    micromamba activate rgi603
+    rgi load -i ${params.db_baseDir}/CARD/card.json --local 
+    rgi main -i ppanggolin_result/pan_genes/all_protein_families.faa -o pangene_rgi_CARD_result --clean  \
+    -t protein -n ${task.cpus} --include_nudge --local 
+
+    python ${params.scripts_baseDir}/add_rgi_togenePA.py -i pangene_rgi_CARD_result.txt\
+    -o gene_PA_CARD_added.csv -r ${params.db_baseDir}/CARD/aro_index.tsv \
+    -gpa ppanggolin_result/gene_presence_absence.Rtab
+
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/CARD_visualization.R \
+    -i  gene_PA_CARD_added.csv -m ${metadata_file}  -mc ${params.metacol} -out heatmap_CARD.pdf -out_html CARD_interactive
+    """
+}
+
+process run_defensefinder_annotation {
+    publishDir "${params.annotation_results}/defensefinder", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("all_protein_families_defense_finder_genes.tsv"), emit: defensefinder_result
+    path("gene_PA_defense.csv"), emit: defense_gene_pa
+    path("gene_count_defense.csv"), emit: defense_gene_count
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate defensefinder
+
+    defense-finder run -w ${task.cpus} --db-type unordered --models-dir ${params.db_baseDir}/defensefinder/models --antidefensefinder -o defensefinder_out --db-type unordered ppanggolin_result/pan_genes/all_protein_families.faa
+
+    mv defensefinder_out/all_protein_families_defense_finder_genes.tsv .
+    micromamba activate COMPARATIVE_ANNOTATION
+    python ${params.scripts_baseDir}/gene_matrix_add_defense.py -d all_protein_families_defense_finder_genes.tsv -g ppanggolin_result/gene_presence_absence.Rtab -o gene_PA_defense.csv
+
+    python ${params.scripts_baseDir}/gene_matrix_add_defense.py -d all_protein_families_defense_finder_genes.tsv -g ppanggolin_result/gene_count_matrix.tsv -o gene_count_defense.csv
+    """
+}
+
+process run_defensefinder_visualization {
+    publishDir "${params.visualization_results}/defensefinder", mode: 'copy'
+    when: params.run_visualization
+
+    input:
+    path(gene_PA_defense)
+    path(gene_count_defense)
+    path(metadata_file)
+
+    output:
+    path("heatmap_defensefinder_gene_PA_metadata${params.metacol}th_col.pdf")
+    path("defensefinder_interactive_gene_PA_metadata${params.metacol}th_col")
+    path("heatmap_defensefinder_gene_count_metadata${params.metacol}th_col.pdf")
+    path("defensefinder_interactive_gene_count_metadata${params.metacol}th_col")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    
+    # Run visualization for gene_PA
+    Rscript ${params.scripts_baseDir}/Defense_visualization.R \
+    -i ${gene_PA_defense} -m ${metadata_file} -mc ${params.metacol} -out_html defensefinder_interactive_gene_PA_metadata${params.metacol}th_col
+    mv heatmap_defensefinder.pdf heatmap_defensefinder_gene_PA_metadata${params.metacol}th_col.pdf
+
+    # Run visualization for gene_count
+    Rscript ${params.scripts_baseDir}/Defense_visualization.R \
+    -i ${gene_count_defense} -m ${metadata_file} -mc ${params.metacol} -out_html defensefinder_interactive_gene_count_metadata${params.metacol}th_col
+    mv heatmap_defensefinder.pdf heatmap_defensefinder_gene_count_metadata${params.metacol}th_col.pdf
+    """
+}
+
+
+
+
+
+
+
+
+
+process run_dbCAN_annotation_bak {
+    publishDir "${params.annotation_results}/dbCAN", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("dbcan_hmmerfamily_count_matrix.csv")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate run_dbcan4
+    export OMP_NUM_THREADS=${task.cpus}
+
+    time run_dbcan ppanggolin_result/pan_genes/all_protein_families.faa protein --dia_cpu ${task.cpus} \
+    --hmm_cpu ${task.cpus} --out_dir db_can_out --db_dir ${params.db_baseDir}/dbCAN
+
+    cut -f1,3 db_can_out/overview.txt | grep -Pv "\\t-\$" | awk -F'\\t' '{split(\$2,a,"+"); for (i in a) {print \$1 "\\t" a[i];}}' | \
+    awk -F"\\t" '{split(\$2,a,"_"); \$2=a[1]; print \$1 "\\t" \$2}' | sed -e "s/(.*//" > dbcan_family.tsv
+
+    python ${params.scripts_baseDir}/dbcan_result_parse.py
+    """
+}
+
+
+process run_dbCAN_annotation {
+    publishDir "${params.annotation_results}/dbCAN", mode: 'copy'
+    cpus params.cpus  // 
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("db_can_out"), emit: db_can_out
+    path("dbcan_raw_gene_count_data.csv"), emit: raw_gene_count_data
+    path("dbcan_geneID_HMMER_count_gene_count.csv"), emit: geneID_HMMER_count_gene_count
+    path("dbcan_HMMER_count_gene_count_matrix.csv"), emit: HMMER_count_gene_count_matrix
+    path("dbcan_raw_gene_PA_data.csv"), emit: raw_gene_PA_data
+    path("dbcan_geneID_HMMER_count_gene_PA.csv"), emit: geneID_HMMER_count_gene_PA
+    path("dbcan_HMMER_count_gene_PA_matrix.csv"), emit: HMMER_count_gene_PA_matrix
+
+    script:
+    def parallel_jobs = (params.cpus as int).intdiv(4)  // divide maximum cpu by 4 
+    """
+    # Activate environment for file splitting
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+
+    # Split the input file
+    seqkit split2 ppanggolin_result/pan_genes/all_protein_families.faa -p ${parallel_jobs} -O ./
+
+    # Switch environment for dbCAN analysis
+    micromamba activate run_dbcan4
+
+    # Run dbCAN on each part in parallel
+    ls all_protein_families.part*.faa | /opt/conda/envs/COMPARATIVE_ANNOTATION/bin/parallel -j ${parallel_jobs} run_dbcan {} protein --dia_cpu 4 --hmm_cpu 4 --out_dir {}_dir --db_dir ${params.db_baseDir}/dbCAN \
+    --hmm_eval  ${params.CAZyme_hmm_eval} --hmm_cov ${params.CAZyme_hmm_cov}
+
+    # Merge the results
+    mkdir db_can_out
+
+    for file in overview.txt dbcan-sub.hmm.out diamond.out hmmer.out; do
+        # Get the header from the first file
+        head -n 1 \$(ls all_protein_families.part*_dir/\$file | head -n 1) > db_can_out/\$file
+        # Append all data rows (excluding headers) from all files
+        for f in all_protein_families.part*_dir/\$file; do
+            tail -n +2 \$f >> db_can_out/\$file
+        done
+    done
+    
+    cat all_protein_families.part*_dir/uniInput > db_can_out/uniInput
+    # cat all_protein_families.part*_dir/overview.txt > db_can_out/overview.txt
+    # cat all_protein_families.part*_dir/dbcan-sub.hmm.out > db_can_out/dbcan-sub.hmm.out
+    # cat all_protein_families.part*_dir/diamond.out > db_can_out/diamond.out
+    # cat all_protein_families.part*_dir/hmmer.out > db_can_out/hmmer.out
+
+
+    # Process the merged results
+    cut -f1,3 db_can_out/overview.txt | grep -Pv "\\t-\$" | awk -F'\\t' '{split(\$2,a,"+"); for (i in a) {print \$1 "\\t" a[i];}}' | \
+    awk -F"\\t" '{split(\$2,a,"_"); \$2=a[1]; print \$1 "\\t" \$2}' | sed -e "s/(.*//" > dbcan_family.tsv
+
+    python ${params.scripts_baseDir}/dbcan_result_parse.py
+
+    # Clean up intermediate files
+    rm -rf all_protein_families.part*.faa all_protein_families.part*_dir  
+    """
+}
+
+
+
+process run_dbCAN_visualization {
+   // publishDir "${params.visualization_results}/dbCAN/${params.gene_matrix}_column_${params.metacol}", mode: 'copy'
+    publishDir "${params.visualization_results}/dbCAN", mode: 'copy'
+    when: params.run_visualization
+    
+    input:
+    path(dbcan_HMMER_count_gene_count_matrix)
+    path(dbcan_HMMER_count_gene_PA_matrix)
+    path(metadata_file)
+
+    output:
+    path("heatmap_dbCAN_gene_PA_metadata${params.metacol}th_col.pdf")
+    path("dbCAN_interactive_gene_PA_metadata${params.metacol}th_col")
+    path("heatmap_dbCAN_gene_count_metadata${params.metacol}th_col.pdf")
+    path("dbCAN_interactive_gene_count_metadata${params.metacol}th_col")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    Rscript ${params.scripts_baseDir}/dbcan_visualization.R -i ${dbcan_HMMER_count_gene_PA_matrix} \
+    -m ${metadata_file} -mc ${params.metacol} -out_html dbCAN_interactive_gene_PA_metadata${params.metacol}th_col
+    mv heatmap_dbCAN.pdf heatmap_dbCAN_gene_PA_metadata${params.metacol}th_col.pdf
+
+    Rscript ${params.scripts_baseDir}/dbcan_visualization.R -i ${dbcan_HMMER_count_gene_count_matrix} \
+    -m ${metadata_file} -mc ${params.metacol} -out_html dbCAN_interactive_gene_count_metadata${params.metacol}th_col
+    mv heatmap_dbCAN.pdf heatmap_dbCAN_gene_count_metadata${params.metacol}th_col.pdf
+    """
+}
+
+process run_dbCAN {
+    publishDir "${params.outdir}/dbCAN" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+    //path("${params.metadata}")
+    path metadata_file 
+
+    output:
+    path("dbcan_gene_count_matrix.csv")
+    path("dbcan_hmmerfamily_count_matrix.csv")
+    path("heatmap_dbCAN.pdf")
+    path("dbCAN_interactive")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate run_dbcan4
+    export OMP_NUM_THREADS=${task.cpus}
+
+    time run_dbcan ppanggolin_result/pan_genes/all_protein_families.faa  protein --dia_cpu ${task.cpus}  \
+    --hmm_cpu ${task.cpus}  --out_dir db_can_out  --db_dir ${params.db_baseDir}/dbCAN
+
+    cut -f1,3 db_can_out/overview.txt | grep -Pv "\\t-\$" |  awk -F'\\t' '{split(\$2,a,"+"); for (i in a) {print \$1 "\\t" a[i];}}' | \
+    awk -F"\\t" '{split(\$2,a,"_"); \$2=a[1]; print \$1 "\\t" \$2}'  | sed -e "s/(.*//" > dbcan_family.tsv
+
+    python ${params.scripts_baseDir}/dbcan_result_parse.py 
+    micromamba activate R432_environment
+    Rscript  ${params.scripts_baseDir}/dbcan_visualization.R -i dbcan_hmmerfamily_count_matrix.csv  \
+    -m ${metadata_file}  -mc ${params.metacol} -out heatmap_dbCAN.pdf -out_html dbCAN_interactive
+    """
+}
+
+process run_eggNOG {
+    publishDir "${params.annotation_results}/eggNOG" , mode : 'copy'
+    //conda "$HOME/miniforge3/envs/COMPARATIVE_ANNOTATION"
+    cpus params.cpus
+
+    input:
+    path(ppanggolin_dir)
+
+    output:
+    path("eggnog_mmseqs.emapper*")
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate eggnog-mapper2112
+    emapper.py -m mmseqs --data_dir ${params.db_baseDir}/eggNOG5 --output eggnog_mmseqs  --cpu ${task.cpus} \
+    -i  ppanggolin_result/pan_genes/all_protein_families.faa --itype proteins
+    """
+}
+
+process run_scoary2 {
+    publishDir "${params.visualization_results}/scoary2" , mode : 'copy'
+    cpus 8
+
+    input:
+    path(ppanggolin_dir)
+    //path("${params.metadata}")
+    path metadata_file 
+    output:
+    path("scoary_out")
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate scoary-2
+    python ${params.scripts_baseDir}/make_scoary_binary_trait.py -i ${metadata_file} -m ${params.metacol} -s ${params.samplecol}
+    # genome_traits.tsv is generated
+
+    # Set MPLCONFIGDIR to a writable directory
+    export MPLCONFIGDIR=\$PWD/mpl_config
+    mkdir -p \$MPLCONFIGDIR
+
+    # Set NUMBA_CACHE_DIR to a writable directory
+    export NUMBA_CACHE_DIR=\$PWD/numba_cache
+    mkdir -p \$NUMBA_CACHE_DIR
+    #export CONFINT_DB=\$PWD/confint_cache
+    #mkdir -p \$CONFINT_DB
+    export CONFINT_DB=$PWD/CONFINT_DB
+
+    scoary2 --genes ppanggolin_result/gene_count_matrix.tsv  \
+    --gene-data-type "gene-count:\\t" --traits genome_traits.tsv --trait-data-type "binary:\\t" --n-permut 1000 \
+    --n-cpus ${task.cpus} --outdir scoary_out
+    """
+}
+
+
+process run_drep_dereplication {
+    publishDir "${params.outdir}/drep", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path(genome_dir)
+
+    output:
+    path "drep_output"
+    path "dereplicated_genomes"
+    path "subspecies_clusters.tsv"
+
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    #micromamba activate drep350
+
+      #-g ${genome_dir}/*.fa \
+
+    # Run dRep dereplication
+    dRep dereplicate drep_output \
+      -g *.fa \
+      -p ${task.cpus} \
+      --ignoreGenomeQuality \
+      --S_algorithm ${params.drep_algorithm} \
+      -sa ${params.drep_ani} \
+      -nc ${params.drep_cov}
+      
+    # Copy dereplicated genomes to a separate directory for easier access
+    mkdir -p dereplicated_genomes
+    cp drep_output/dereplicated_genomes/*.fa dereplicated_genomes/
+
+    echo -e "genome\tsubspecies_cluster\tprimary_cluster" > subspecies_clusters.tsv
+    awk -F, 'NR>1 {print \$1"\\t"\$2"\\t"\$6}' drep_output/data_tables/Cdb.csv >> subspecies_clusters.tsv
+
+    """
+}
+
+
+
+/*
+process run_kofamscan 
+*/
+/*
+workflow{
+    bins_ch = Channel.fromFilePairs("${params.inputDir}/*.fa",size:1)
+    
+    prokka_result = run_prokka(bins_ch)
+    prokka_collect = prokka_result.collect()
+    ppanggolin_result = run_ppanggolin(prokka_collect)
+    metadata_ch = Channel.fromPath("${params.metadata}")
+    run_genePA_cluster(ppanggolin_result,metadata_ch)
+    run_kofamscan(ppanggolin_result,metadata_ch)
+    run_VFDB(ppanggolin_result,metadata_ch)
+    run_rgi_CARD(ppanggolin_result,metadata_ch)
+    run_dbCAN(ppanggolin_result,metadata_ch)
+    run_eggNOG(ppanggolin_result,metadata_ch)
+    run_scoary2(ppanggolin_result,metadata_ch)
+    //metadata_ch = file(params.metadata)
+    allbins=Channel.fromPath("${params.inputDir}/*.fa")
+    run_skani(allbins.collect(),metadata_ch)
+
+    //run_VFDB(panaroo_result,metadata_ch)
+    //run_rgi_CARD(panaroo_result,metadata_ch)
+}
+*/
+
+process create_shiny_dashboard {
+    publishDir "${params.outdir}/shiny_dashboard", mode: 'copy'
+
+    input:
+    path visualization_results_dir
+
+    output:
+    path "shiny_dashboard.html"
+
+    script:
+    """
+    #!/usr/bin/env python3
+    import os
+
+    html_content = "<html><body>"
+    html_content += "<h1>Shiny App Links</h1>"
+
+    for root, dirs, files in os.walk("${visualization_results_dir}"):
+        for file in files:
+            if file == "htShiny.sh":
+                app_path = os.path.join(root, file)
+                app_name = os.path.basename(os.path.dirname(app_path))
+                relative_path = os.path.relpath(app_path, "${params.outdir}")
+                html_content += f'<p><a href="{relative_path}" target="_blank">{app_name} Shiny App</a></p>'
+
+    html_content += "</body></html>"
+
+    with open("shiny_dashboard.html", "w") as f:
+        f.write(html_content)
+    """
+}
+process run_multiqc {
+    publishDir "${params.outdir}/multiqc", mode: 'copy'
+    cpus 1
+
+    input:
+    path visualization_results
+    path shiny_dashboard
+
+    output:
+    path "*"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+    export MPLCONFIGDIR=~/.config/matplotlib
+    mkdir -p ~/.config/matplotlib
+
+
+    multiqc ${visualization_results}  -o ${params.outdir}/multiqc
+    cp ${shiny_dashboard} ${params.outdir}/multiqc/
+    echo '<p>See <a href="shiny_dashboard.html">Shiny Apps Dashboard</a></p>' >> ${params.outdir}/multiqc/multiqc_report.html
+    """
+}
+
+process make_sequence_db {
+    publishDir "${params.outdir}/sequence_db", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path metadata_file
+    path prokka_dir
+    path ppanggolin_dir
+
+    output:
+    path "sequences.h5"
+    path "logs"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    #micromamba activate COMPARATIVE_ANNOTATION
+
+    mkdir -p logs
+    mkdir -p prokka
+    mkdir -p ppanggolin_need 
+        find -L ./ -name "*.faa" | grep -v ppanggolin_result | xargs -I {} cp {} prokka/
+    find -L ./ -name "*.ffn" | grep -v ppanggolin_result | xargs -I {} cp {} prokka/
+    
+    cp ${ppanggolin_dir}/gene_families.tsv ppanggolin_need/
+    cp ${ppanggolin_dir}/genome_id_linking.tsv ppanggolin_need/
+
+    
+    Rscript /scratch/tools/microbiome_analysis/comparative_annotation/make_sequence_db.R \
+      --input ${metadata_file} \
+      --processors ${task.cpus} \
+      --output ./ \
+      --data ./
+    
+ #rm -rf prokka
+ #rm -rf ppanggolin_need
+    """
+}
+
+
+workflow {
+    log.info "Starting analysis : your output directory is at  ${params.outdir}"
+    //log.info "Determined run mode: ${params.run_mode}"
+
+    metadata_ch = Channel.fromPath(params.metadata)
+    input_dir_ch = Channel.fromPath(params.inputDir)
+
+    selected_genomes = prepare_genomes(metadata_ch, input_dir_ch)
+
+    def runProkka = !file("${params.outdir}/prokka").exists()
+    def runPpanggolin = !file("${params.outdir}/ppanggolin_result").exists()
+    def runKofamscan = !file("${params.annotation_results}/kofamscan/ko_matrix.csv").exists()
+    def runVFDB = !file("${params.annotation_results}/VFDB/gene_count_VFDB_added.csv").exists()
+    def runCARD = !file("${params.annotation_results}/CARD/gene_count_CARD_added.csv").exists()
+    def runDbCAN = !file("${params.annotation_results}/dbCAN/dbcan_hmmerfamily_count_matrix.csv").exists()
+    def runSkani = !file("${params.annotation_results}/ani/skani_fullmatrix").exists()
+    def runEggNOG = !file("${params.annotation_results}/eggNOG/eggnog_mmseqs.emapper.annotations").exists()
+    def runMetadataSummary = !file("${params.annotation_results}/metadata_column_COMPARATIVE_ANNOTATION_summary.tsv").exists()
+    def runGenePACluster = !file("${params.outdir}/genePA_cluster/pcoa_plot_interactive.html").exists()
+    def run_sequence_db = !file("${params.outdir}/sequence_db/sequences.h5").exists()
+    //def runDefenseFinder = !file("${params.outdir}/defensefinder/all_protein_families_defense_finder_genes.tsv").exists()
+
+    def runDrep = params.run_drep && !file("${params.outdir}/drep/subspecies_clusters.tsv").exists()
+
+    // if (params.run_mode == 'full') {
+    //     // Full mode: Run both annotation and visualization
+    //     bins_ch = selected_genomes.flatMap { dir ->
+    //         file("${dir}/*.fa").collect { fa_file ->
+    //             tuple(fa_file.baseName, fa_file)
+    //         }
+
+    bins_ch = selected_genomes.map { dir ->
+        // 디렉토리 내 모든 .fa 파일 찾기
+        def fa_files = file("${dir}/*.fa")
+        if (fa_files.size() == 0) {
+            log.warn "No .fa files found in ${dir}"
+        }
+        return fa_files
+    }.flatten().map { fa_file ->
+        // 각 파일을 tuple로 변환
+        return tuple(fa_file.baseName, fa_file)
+    }
+    
+    // 확인을 위해 파일 목록 로깅
+    bins_ch.view { id, file -> "Processing genome: ${id} (${file})" }
+    prokka_result = run_prokka(bins_ch)
+    prokka_collect = prokka_result.collect()
+
+    // if (runProkka) {
+    //     bins_ch = selected_genomes.flatMap { dir ->
+    //         file("${dir}/*.fa").collect { fa_file ->
+    //             tuple(fa_file.baseName, fa_file)
+    //         }
+    //     }
+    //     prokka_result = run_prokka(bins_ch)
+    //     prokka_collect = prokka_result.collect()
+    // } else {
+    //     prokka_collect = Channel.fromPath("${params.outdir}/prokka")
+    // }
+
+    if (runPpanggolin) {
+        ppanggolin_result = run_ppanggolin(prokka_collect)
+    } else {
+        ppanggolin_result = Channel.fromPath("${params.outdir}/ppanggolin_result")
+    }
+    if (runKofamscan) {
+        kofamscan_result = run_kofamscan_annotation(ppanggolin_result)
+    } else {
+        kofamscan_result = Channel.fromPath("${params.annotation_results}/kofamscan/ko_matrix.csv")
+    }
+    if (runVFDB) {
+        vfdb_result = run_VFDB_annotation(ppanggolin_result)
+        vfdb_gene_pa = vfdb_result.vfdb_gene_pa
+        vfdb_gene_count = vfdb_result.vfdb_gene_count
+    } else {
+        vfdb_gene_pa = Channel.fromPath("${params.annotation_results}/VFDB/gene_PA_VFDB_added.csv")
+        vfdb_gene_count = Channel.fromPath("${params.annotation_results}/VFDB/gene_count_VFDB_added.csv")
+    }
+
+    if (runCARD) {
+        card_result = run_rgi_CARD_annotation(ppanggolin_result)
+        card_gene_pa = card_result.card_gene_pa
+        card_gene_count = card_result.card_gene_count
+    } else {
+        card_gene_pa = Channel.fromPath("${params.annotation_results}/CARD/gene_PA_CARD_added.csv")
+        card_gene_count = Channel.fromPath("${params.annotation_results}/CARD/gene_count_CARD_added.csv")
+    }
+    // if (runDefenseFinder) {
+    //     defensefinder_result = run_defensefinder_annotation(ppanggolin_result)
+    //     defensefinder_gene_pa = defensefinder_result.defense_gene_pa
+    //     defensefinder_gene_count = defensefinder_result.defense_gene_count
+    // } else {
+    //     defensefinder_gene_pa = Channel.fromPath("${params.annotation_results}/defensefinder/gene_PA_defense.csv")
+    //     defensefinder_gene_count = Channel.fromPath("${params.annotation_results}/defensefinder/gene_count_defense.csv")
+    // }
+
+    if (runDbCAN) {
+        dbcan_result = run_dbCAN_annotation(ppanggolin_result)
+        dbcan_count_matrix = dbcan_result.HMMER_count_gene_count_matrix
+        dbcan_pa_matrix = dbcan_result.HMMER_count_gene_PA_matrix
+    } else {
+        dbcan_count_matrix = Channel.fromPath("${params.annotation_results}/dbCAN/dbcan_HMMER_count_gene_count_matrix.csv")
+        dbcan_pa_matrix = Channel.fromPath("${params.annotation_results}/dbCAN/dbcan_HMMER_count_gene_PA_matrix.csv")
+    }
+    if (runSkani) {
+        all_genomes = selected_genomes.flatMap { dir -> file("${dir}/*.fa") }.collect()
+        skani_result = run_skani_annotation(all_genomes)
+        skani_fullmatrix = skani_result[0]
+        skani_dist_result = skani_result[1]
+    } else {
+        skani_fullmatrix = Channel.fromPath("${params.annotation_results}/ani/skani_fullmatrix")
+        skani_dist_result = Channel.fromPath("${params.annotation_results}/ani/skani_ANI_dist.tsv")
+    }
+
+    if (runEggNOG) {
+        eggnog_result = run_eggNOG(ppanggolin_result)
+    } else {
+        log.info "eggNOG already exists."
+
+//        eggnog_result = Channel.fromPath("${params.annotation_results}/eggNOG/eggnog_mmseqs.emapper.annotations")
+    }
+    if (runMetadataSummary) {
+        create_metadata_summary(metadata_ch)
+    }
+    if (run_sequence_db) {
+        sequence_db = make_sequence_db(metadata_ch, prokka_collect, ppanggolin_result)
+    } else {
+        sequence_db = Channel.fromPath("${params.outdir}/sequence_db/sequences.h5")
+    }
+    
+    def genomeCount = new File("selected_genomes${params.run_name}").exists() ? new File("selected_genomes${params.run_name}").listFiles().size() : 0
+
+    if (runGenePACluster) {
+        if (genomeCount >= 5) {
+            run_genePA_cluster(ppanggolin_result, metadata_ch)
+        } else {
+            log.info "Genome count is less than 5. GenePA Cluster will not be run."
+        }
+
+    } else {
+        log.info "GenePA Cluster already exists."
+    }
+     if (runDrep) {
+         all_genomes = selected_genomes.flatMap { dir -> file("${dir}/*.fa") }.collect()
+         drep_result = run_drep_dereplication(all_genomes)
+     }
+
+
+        // prokka_result = run_prokka(bins_ch)
+        // prokka_collect = prokka_result.collect()
+//        ppanggolin_result = run_ppanggolin(prokka_collect)
+        //kofamscan_result = run_kofamscan_annotation(ppanggolin_result)
+        //vfdb_result = run_VFDB_annotation(ppanggolin_result)
+        //card_result = run_rgi_CARD_annotation(ppanggolin_result)
+        //dbcan_result = run_dbCAN_annotation(ppanggolin_result)
+        //all_genomes = selected_genomes.flatMap { dir ->
+        //    file("${dir}/*.fa")
+        //}.collect()
+        //skani_result = run_skani_annotation(all_genomes)
+
+        // Visualization part
+        metadata_ch = Channel.fromPath("${params.metadata}")
+       // genePA will be updated to provide PA and  count         
+        //genePA_result = run_genePA_cluster(ppanggolin_result, metadata_ch)
+        //kofamscan_vis_result = run_kofamscan_visualization(kofamscan_result, metadata_ch)
+
+
+if (params.run_visualization) {
+
+        kofamscan_vis_result = run_kofamscan_visualization(
+    kofamscan_result[0],
+    metadata_ch          
+)
+        //vfdb_vis_result = run_VFDB_visualization(vfdb_result.gene_pa, metadata_ch)
+        vfdb_vis_result = run_VFDB_visualization(vfdb_gene_pa, vfdb_gene_count, metadata_ch)
+        //card_vis_result = run_rgi_CARD_visualization(card_result.gene_pa, metadata_ch)
+        card_vis_result = run_rgi_CARD_visualization(card_gene_pa, card_gene_count, metadata_ch)     
+        dbcan_vis_result = run_dbCAN_visualization(dbcan_count_matrix, dbcan_pa_matrix, metadata_ch)
+        //skani_vis_result = run_skani_visualization(skani_result[0], metadata_ch)
+        skani_vis_result = run_skani_visualization(skani_fullmatrix, metadata_ch)
+        //defensefinder_vis_result = run_defensefinder_visualization(defensefinder_gene_pa, defensefinder_gene_count, metadata_ch)
+
+        scoary2_result = run_scoary2(ppanggolin_result, metadata_ch)
+
+        vis_results = Channel.empty()
+            .mix(kofamscan_vis_result)
+            .mix(vfdb_vis_result)
+            .mix(card_vis_result)
+            .mix(dbcan_vis_result)
+            .mix(skani_vis_result)
+            .mix(scoary2_result)
+            //.mix(defensefinder_vis_result) 
+            .collect()
+} else {
+    log.info "metacol is not specified. Visualization step will be skipped."
+}
+        // Shiny dashboard creation and MultiQC execution after all visualizations are done
+        //shiny_dashboard = create_shiny_dashboard(vis_results)
+        //run_multiqc(vis_results, shiny_dashboard)
+    
+
+}
+#!/usr/bin/env nextflow
+// this script was optimized apptainer in any compurational environment. 
+nextflow.enable.dsl=2
+
+//params.db_baseDir = "/scratch/tools/microbiome_analysis/database"
+params.db_baseDir = "/opt/database"
+params.scripts_baseDir = "/scratch/tools/microbiome_analysis/scripts"
+params.filter = 'human'
+params.human_index = "${params.db_baseDir}/host_genome/GRCh38/GRCh38_p12.dna.primary_assembly.fa"
+params.custom_index = "${params.db_baseDir}/host_genome/${params.filter}/${params.filter}"
+//params.reads = "${baseDir}/raw_reads/*_{1,2}.fastq.gz"
+params.outdir = "${launchDir}/results/metagenome/RAWREAD_QC"
+params.cpus = 4
+params.inputDir = 'raw_reads' 
+
+if (!new File(params.inputDir).exists()) {
+    error "Input directory does not exist: ${params.inputDir}. Please specify a valid directory with --inputDir. \n \
+    Input paired-end read files should be gzipped fastq files"
+} else {
+    // Check if the directory is empty
+    if (new File(params.inputDir).list().length == 0) {
+        error "Input directory is empty: ${params.inputDir}. Please specify a directory with --inputDir : paired-end read files.\n \
+        If there is problem with execution of assembly, check the fastq files with vdb-validate from sra-tools"
+    }
+}
+
+def ANSI_RESET = "\u001B[0m"
+def ANSI_YELLOW = "\u001B[33m"
+def ANSI_GREEN = "\u001B[32m"
+def ANSI_BLUE = "\u001B[34m"
+def ANSI_RED= "\u001B[31m"
+
+log.info """\
+
+===========================================
+    ${ANSI_RED}RAWREAD_QC${ANSI_RESET} - Raw Read Quality Control  
+===========================================
+(Apptainer Container with Nextflow)
+
+Key Features:
+  ✓ FastQC-based quality assessment
+  ✓ fastp-based read quality control
+  ✓ Host DNA filtering (Human/Custom/None)
+  ✓ MultiQC generate HTML reports
+
+
+\033[31mRequired Parameters:\033[0m 
+------------------
+\033[31m--inputDir\033[0m         : Directory containing raw read files
+                     Files should be paired-end gzipped FASTQ files
+                     with naming pattern: *_1.fastq.gz and *_2.fastq.gz
+
+\033[33m--filter\033[0m           : Type of host reads to filter out
+                     Available options:
+                    \033[31mhuman\033[0m : Filter human reads (default)
+                    \033[31mnone\033[0m :  \033[1;31mSkip host filtering\033[0m
+                    \033[31mcustom\033[0m : Use custom host genome index
+                          1. Prepare index: 
+                             \033[1m\$ metafun -module PREPARE_CUSTOM_HOST -i <genome.fasta> -f <custom_name>\033[0m
+                             Your custom genome is indexed by Bowtie2 using \033[31mcustom_name\033[0m. 
+                          2. Use with: metafun -module RAWREAD_QC  --filter <custom_name>
+
+
+Optional Parameters:
+------------------
+\033[33m--custom_index\033[0m     : Path to custom genome index for filtering
+                     Used only when --filter=custom
+\033[33m--outdir\033[0m           : Output directory 
+                     (default: ${launchDir}/results/metagenome/RAWREAD_QC)
+\033[33m--cpus\033[0m             : Number of CPUs to use (default: 4)
+
+
+\033[38;2;0;255;255mOutput Files:\033[0m
+-----------
+\033[38;2;0;255;255m- read_filtered/\033[0m           : Directory containing filtered reads
+\033[38;2;0;255;255m- fastqc_raw/\033[0m              : Raw read quality reports
+\033[38;2;0;255;255m- fastqc_filtered/\033[0m         : Filtered read quality reports
+\033[38;2;0;255;255m- multiqc/\033[0m                 : Combined quality reports
+
+
+\033[38;2;180;180;180mNote:\033[0m Filtered reads from this module will be used in: 
+\033[38;2;255;149;0mASSEMBLY_BINNING\033[0m 
+\033[38;2;0;176;80mBIN_ASSESSMENT\033[0m 
+\033[38;2;8;70;250mWMS_TAXONOMY\033[0m 
+\033[38;2;112;48;160mWMS_FUNCTION\033[0m
+
+    """
+    .stripIndent(true)
+
+workflow {
+    reads_ch = Channel.fromFilePairs("${params.inputDir}/*{1,2}.{fastq,fq}{.gz,}", checkIfExists: true)
+                .map {accession, reads -> 
+                def sam_accession = accession.replaceAll(/[1,2]\.(fastq|fq)(\.gz)?$/, '')
+                tuple(sam_accession, reads)
+                }
+
+
+    //read_pairs = Channel.fromFilePairs(params.reads)
+    fastqc_raw_out = fastqc_raw(reads_ch)
+    if (params.filter == "none") {
+    //fastp_out = fastp_only(reads_ch)
+    fastp_out = fastp_with_publish(reads_ch)
+    fastqc_filtered_out=fastqc_filtered(fastp_out.map { it -> tuple(it[0], it[1]) })
+    qc_results = Channel.empty()
+                    .mix(fastqc_raw_out)
+                    .mix(fastqc_filtered_out)
+                    .mix(fastp_out.map{ it[2] })
+                    .collect()
+    }
+    else {
+    fastp_out = fastp(reads_ch)
+    humanread_filter_out = humanread_filter(fastp_out.map { it -> tuple(it[0], it[1]) })
+    fastqc_filtered_out = fastqc_filtered(humanread_filter_out)
+
+    qc_results = Channel.empty()
+                        .mix(fastqc_raw_out)
+                        .mix(fastqc_filtered_out)
+                        .mix(fastp_out.map{ it[2] })
+                        .collect()
+    }
+    //fastp_out = fastp(reads_ch)
+    //humanread_filter_out = humanread_filter(fastp_out.map { it -> tuple(it[0], it[1]) })
+    //fastqc_filtered_out = fastqc_filtered(humanread_filter_out)
+
+    //qc_results = Channel.empty()
+    //                   .mix(fastqc_raw_out)
+    //                    .mix(fastqc_filtered_out)
+    //                    .mix(fastp_out.map{ it[2] })
+    //                    .collect()
+    multiQC(qc_results)
+
+    //multiQC([fastqc_raw.out, fastqc_filtered.out])
+}
+
+process fastqc_raw {
+    tag "fastqc ${sample_id}"
+    //conda "$HOME/miniforge3/envs/RAWREAD_QC"
+    publishDir "${params.outdir}/fastqc_raw", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    path("${sample_id}_raw_fastqc")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+    mkdir ${sample_id}_raw_fastqc
+    fastqc ${reads} -o ${sample_id}_raw_fastqc -t ${task.cpus}
+    """
+}
+
+process fastp {
+    tag "fastp ${sample_id}"
+    //publishDir "${params.outdir}/fastp", mode: 'copy'
+    //conda "$HOME/miniforge3/envs/RAWREAD_QC"
+    cpus params.cpus
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    tuple val(sample_id), path("${sample_id}_fastp_*.fastq.gz"), path("${sample_id}_fastp.json") //, emit: json
+
+    script:
+    //if(params.filter == 'human')
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC    
+    fastp --in1 ${reads[0]} --in2 ${reads[1]} \
+    --out1 ${sample_id}_fastp_1.fastq.gz --out2 ${sample_id}_fastp_2.fastq.gz \
+    -w ${task.cpus} -j ${sample_id}_fastp.json
+    """
+    //else
+    //    error "Invalid alignment mode: ${params.filter}"
+    //-j ${sample_id}_fastp.json
+}
+
+/*
+mode = 'tcoffee'
+
+process align {
+    input:
+    path sequences
+
+    script:
+    if( mode == 'tcoffee' )
+        """
+        t_coffee -in $sequences > out_file
+        """
+
+    else if( mode == 'mafft' )
+        """
+        mafft --anysymbol --parttree --quiet $sequences > out_file
+        """
+
+    else if( mode == 'clustalo' )
+        """
+        clustalo -i $sequences -o out_file
+        """
+
+    else
+        error "Invalid alignment mode: ${mode}"
+}
+*/
+
+
+process fastp_with_publish {
+    tag "fastp ${sample_id}"
+    publishDir "${params.outdir}/read_filtered", mode: 'copy'
+    cpus params.cpus
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    tuple val(sample_id), path("${sample_id}_fastp_*.fastq.gz"), path("${sample_id}_fastp.json")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC    
+    fastp --in1 ${reads[0]} --in2 ${reads[1]} \
+    --out1 ${sample_id}_fastp_1.fastq.gz --out2 ${sample_id}_fastp_2.fastq.gz \
+    -w ${task.cpus} -j ${sample_id}_fastp.json
+    """
+}
+
+
+
+process humanread_filter {
+    tag "read filter based on ${params.filter} : ${sample_id}"
+    //conda "$HOME/miniforge3/envs/RAWREAD_QC"
+    publishDir "${params.outdir}/read_filtered", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    tuple val(sample_id), path("${sample_id}_fastp_*.fastq.gz")
+
+    script:
+    if (params.filter=='human')
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+    bowtie2 --very-sensitive -x ${params.human_index} -1 ${reads[0]} -2 ${reads[1]} \
+    -p ${task.cpus} --un-conc-gz ${sample_id}_fastp_hg38 -S /dev/null
+    mv ${sample_id}_fastp_hg38.1 ${sample_id}_fastp_hg38_1.fastq.gz
+    mv ${sample_id}_fastp_hg38.2 ${sample_id}_fastp_hg38_2.fastq.gz
+    """
+    else if(params.filter != 'human')
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+    bowtie2 --very-sensitive -x ${params.custom_index} -1 ${reads[0]} -2 ${reads[1]} \
+    -p ${task.cpus} --un-conc-gz ${sample_id}_fastp_custom -S /dev/null
+    mv ${sample_id}_fastp_custom.1 ${sample_id}_fastp_custom_1.fastq.gz
+    mv ${sample_id}_fastp_custom.2 ${sample_id}_fastp_custom_2.fastq.gz
+    """
+    else 
+    // Optionally handle the default case
+    // This block can be left empty if no action is needed
+    """
+    echo "No matching condition found for filter: $filter"
+    """ 
+}
+
+process fastqc_filtered {
+    tag "${sample_id}"
+    //conda "$HOME/miniforge3/envs/RAWREAD_QC"
+    publishDir "${params.outdir}/fastqc_filtered", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    path("${sample_id}_raw_fastqc_filtered")
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+    mkdir ${sample_id}_raw_fastqc_filtered
+    fastqc ${reads} -o ${sample_id}_raw_fastqc_filtered  -t ${task.cpus}
+    """
+}
+
+process multiQC {
+    publishDir "${params.outdir}/multiqc", mode: 'copy'
+    //conda "$HOME/miniforge3/envs/RAWREAD_QC"
+
+    input:
+    path reports
+
+    output:
+    path "*"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate RAWREAD_QC
+
+    multiqc .
+    """
+}
+#!/usr/bin/env nextflow
+
+nextflow.enable.dsl=2 
+
+params.db_baseDir = "/opt/database"
+params.scripts_baseDir = "/scratch/tools/microbiome_analysis/scripts"
+
+params.inputDir = "${launchDir}/results/metagenome/RAWREAD_QC/read_filtered"
+params.outdir =  "${launchDir}/results/metagenome/WMS_FUNCTION"
+
+params.metadata = "meta.csv"
+params.sampleIDcolumn = 1
+params.analysiscolumn = 0
+params.humann3_cpus = 6
+params.metadatacolumn = ""
+params.cpus = 36
+
+
+if (!new File(params.inputDir).exists()) {
+    error "Input directory does not exist: ${params.inputDir}. Please specify a valid directory with --inputDir."
+} else {
+    // Check if the directory is empty
+    if (new File(params.inputDir).list().length == 0) {
+        error "Input directory is empty: ${params.inputDir}. Please specify a directory with --inputDir : paired-end read files."
+    }
+}
+
+// if (params.metadata.isEmpty()) {
+//     error "Metadata file is not specified. Please specify.  Please specify a valid metadata in CSV(comma , separated format) file with --metadata."
+// }
+if (params.sampleIDcolumn <= 0) {
+    error "Sample ID column is not specified. Please specify a sample ID column number(integer) with --sampleIDcolumn."
+}
+
+def ANSI_PURPLE = "\033[38;2;112;48;160m"
+def ANSI_RESET = "\u001B[0m"
+def ANSI_YELLOW = "\u001B[33m"
+def ANSI_RED = "\u001B[31m"
+def ANSI_CYAN = "\033[38;2;0;255;255m"
+
+
+log.info """\
+ Usage:
+    nextflow run nf_scripts/${ANSI_PURPLE}WMS_FUNCTION_apptainer.nf${ANSI_RESET} \\
+    --inputDir "\${filtered_reads_dir}" \\
+    --metadata "\${metadata_file}" \\
+    --sampleIDcolumn "\${column_number}" \\
+    --analysiscolumn "\${analysis_column}"
+
+${ANSI_PURPLE}WMS_FUNCTION : Functional profiling of whole metagenome sequencing data${ANSI_RESET}
+=========================================================
+ ${ANSI_PURPLE}HUMAnN3${ANSI_RESET}         : Hierarchical MetaGenomic Functional Profiling
+ ${ANSI_PURPLE}UniRef90${ANSI_RESET}        : Protein database for functional annotation
+ ${ANSI_PURPLE}MetaCyc${ANSI_RESET}         : Metabolic pathway database
+
+${ANSI_RED}Required Parameters:${ANSI_RESET}
+------------------
+${ANSI_RED}--inputDir${ANSI_RESET}        : Directory containing quality filtered paired-end reads
+${ANSI_RED}--metadata${ANSI_RESET}        : CSV file with sample metadata
+${ANSI_RED}--sampleIDcolumn${ANSI_RESET}  : Column number containing sample IDs
+${ANSI_RED}--analysiscolumn${ANSI_RESET}  : Column number for analysis grouping
+
+${ANSI_YELLOW}Optional Parameters:${ANSI_RESET}
+------------------
+${ANSI_YELLOW}--cpus${ANSI_RESET}            : Number of CPUs (default: ${params.cpus})
+${ANSI_YELLOW}--outdir${ANSI_RESET}          : Output directory (default: ${params.outdir})
+
+${ANSI_CYAN}Output Structure:${ANSI_RESET}
+------------------
+${ANSI_CYAN}- humann3/${ANSI_RESET}              : Per-sample HUMAnN3 raw outputs
+${ANSI_CYAN}- humann3_combined/${ANSI_RESET}     : Combined pathway abundance tables
+${ANSI_CYAN}- WMS_Function_result/${ANSI_RESET}  : Statistical analysis results
+
+Database Requirements:
+- HUMAnN3 databases must be installed at: ${params.db_baseDir}/humann3/
+
+Typical analysis flow:
+RAWREAD_QC → ${ANSI_PURPLE}WMS_FUNCTION${ANSI_RESET} → INTERACTIVE_COMPARATIVE
+"""
+.stripIndent(true)
+
+
+
+process humann3_run{
+    publishDir "${params.outdir}/humann3", mode: 'copy'
+    tag "humann3  ${accession}"
+    errorStrategy 'retry'
+    maxRetries 1
+    cpus params.humann3_cpus
+    //containerOptions {"--bind ${params.db_baseDir}/humann3/metaphlan:/opt/conda/envs/humann3/lib/python3.10/site-packages/metaphlan/metaphlan_databases/"}
+
+    input:
+    tuple val(accession), path(reads)
+    
+    output:
+    path "*"
+
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate humann3
+
+    if [[ "${reads[0]}" == *.gz ]]; then
+        cat ${reads[0]} ${reads[1]} > ${accession}_merged.fastq.gz
+        humann -i ${accession}_merged.fastq.gz -o ${accession}_humann3 --threads ${task.cpus} \
+        --input-format fastq.gz --search-mode uniref90 --output-basename ${accession} --output-format tsv \
+        --bowtie-options "--threads ${task.cpus}"\
+        --pathways metacyc --nucleotide-database ${params.db_baseDir}/humann3/chocophlan/ --protein-database ${params.db_baseDir}/humann3/uniref/ --metaphlan-options "--offline --index mpa_vOct22_CHOCOPhlAnSGB_202212"
+        rm ${accession}_merged.fastq.gz
+    else
+        cat ${reads[0]} ${reads[1]} > ${accession}_merged.fastq
+        humann -i ${accession}_merged.fastq -o ${accession}_humann3 --threads ${task.cpus} \
+        --bowtie-options "--threads ${task.cpus}"\
+        --input-format fastq --search-mode uniref90 --output-basename ${accession} --output-format tsv \
+        --pathways metacyc --nucleotide-database ${params.db_baseDir}/humann3/chocophlan/ --protein-database ${params.db_baseDir}/humann3/uniref/ --metaphlan-options "--offline --index mpa_vOct22_CHOCOPhlAnSGB_202212"
+        rm ${accession}_merged.fastq
+    fi
+
+
+    """
+}
+
+/*
+
+    cat ${reads[0]} ${reads[1]}  > ${accession}_merged.fastq.gz
+    humann -i ${accession}_merged.fastq.gz  -o ${accession}_humann3 --threads ${task.cpus} \
+    --input-format fastq.gz --search-mode uniref90 --output-basename ${accession} --output-format tsv \
+    --pathways metacyc --nucleotide-database  ${params.db_baseDir}/humann3/chocophlan/ --protein-database ${params.db_baseDir}/humann3/uniref/
+
+    rm ${accession}_merged.fastq.gz
+
+*/
+
+//https://github.com/DerrickWood/kraken2/issues/100
+
+process humann3_parsing{
+    publishDir "${params.outdir}/humann3_combined", mode: 'copy'
+    tag "humann3 result parssing"
+
+    input:
+    path(humann_output)
+    
+    output:
+    //path "*"
+    path("humann_split_stratified_table/*")
+    //path("${accession}_bracken.out")
+    //awk -v sample=$sample '{if ($1 == sample "fastp_hg38_1") print $(NF - 2)}' ${params.multiqcFile}
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate humann3
+    humann_join_tables -i ./ -o pathabund_join.tsv --file_name  _pathabundance.tsv -s 
+    humann_renorm_table -i pathabund_join.tsv -o pathabund_join_renorm_cpm.tsv -u cpm
+    humann_split_stratified_table -i pathabund_join_renorm_cpm.tsv  -o humann_split_stratified_table
+    sed -i 's/_Abundance//g' humann_split_stratified_table/pathabund_join_renorm_cpm_unstratified.tsv
+
+    """
+}
+
+process function_analysis {
+    publishDir "${params.outdir}", mode: 'copy'
+
+    input: 
+    path(humann3_parsing_result)
+    path(metadata)
+
+    output:
+    path("*")
+    when: params.analysiscolumn >= 0
+
+    //3 custome script : 2 for bracken relab data manage, 1 for phyloseq object creation 
+    //1 database information file : taxID to species of kraken database 
+    //   BrackentaxID_GTDBtaxa_completed.csv
+
+    script: 
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    
+    Rscript ${params.scripts_baseDir}/humann3_visualization.R \
+    -i pathabund_join_renorm_cpm_unstratified.tsv \
+    -out WMS_Function_result -m ${metadata} -mc ${params.analysiscolumn} -sc  ${params.sampleIDcolumn} > humann_analysis_inspect.log
+    echo "look at humann_analysis_inspect.log file  " 
+
+    """
+}
+//-out WMS_Function_result -m ${launchDir}/${params.metadata} -mc ${params.analysiscolumn} -sc  ${params.sampleIDcolumn}
+
+
+workflow{
+    reads_ch = Channel.fromFilePairs("${params.inputDir}/*_{1,2}.{fastq,fq}{.gz,}", checkIfExists: true)
+                .map { accession, reads -> 
+                    // Split the accession name to remove the '_fastp' part
+                    //def sam_accession = accession.split('_')[0]
+                    def sam_accession = accession.replaceAll(/_fastp.*$/, '')
+                    tuple(sam_accession, reads) 
+                }                
+    reads_ch.view()
+    metadata_ch=Channel.fromPath("${params.metadata}")
+    humann3_result = humann3_run(reads_ch)
+    humann3_combined = humann3_result.collect()
+    humann3_parsing_result = humann3_parsing(humann3_combined)
+    //function_analysis(humann3_parsing_result, "${params.metadata}")
+    function_analysis(humann3_parsing_result, metadata_ch)
+    // without below line, accession information lost 
+    //phyloseq_input = bracken_result.collect()
+    //phyloseq_input.view()
+
+    //metadata_ch = Channel.fromPath("${params.metadata}")
+    //phyloseq_creation(phyloseq_input,metadata_ch)
+
+    //reads_ch = Channel.fromFilePairs("", checkIfExists : true )
+}
+
+
+#!/usr/bin/env nextflow
+
+nextflow.enable.dsl=2 
+
+params.db_baseDir = "/opt/database"
+params.scripts_baseDir = "/scratch/tools/microbiome_analysis/scripts"
+
+params.inputDir = "${launchDir}/results/metagenome/RAWREAD_QC/read_filtered"
+params.outdir =  "${launchDir}/results/metagenome/WMS_TAXONOMY"
+params.metadata = ""
+params.sampleIDcolumn = 1
+params.analysiscolumn = 0
+params.confidence_filter = 0.1  // default confidence value for kraken2
+params.relab_filter = 0.0001  // optimal filtration for kraken2 with bracken 0.01% 1is maximum 
+params.cpus = 15
+params.kraken_method = 'default'
+params.profiler = 'sylph'
+params.sylph_abundance_type = 'relative_abundance'  
+
+if (!new File(params.inputDir).exists()) {
+    error "Input directory does not exist: ${params.inputDir}. Please specify a valid directory with --inputDir."
+} else {
+    // Check if the directory is empty
+    if (new File(params.inputDir).list().length == 0) {
+        error "Input directory is empty: ${params.inputDir}. Please specify a directory with --inputDir : paired-end read files."
+    }
+}
+
+if (params.metadata.isEmpty()) {
+    error "Metadata file is not specified. Please specify.  Please specify a valid metadata in CSV(comma , separated format) file with --metadata."
+}
+if (params.sampleIDcolumn <= 0) {
+    error "Sample ID column is not specified. Please specify a sample ID column number(integer) with --sampleIDcolumn."
+}
+if (params.analysiscolumn <= 0) {
+    println """
+    Analysis ID column is not specified. You would want to analysis it separately with script. \
+    do nextflow run WMS_TAXA_stat.nf --columnID {column number}
+    Or specify a sample ID column number(integer) with --analysiscolumn you want to analyze."
+    """
+}
+
+def ANSI_RESET = "\u001B[0m"
+def ANSI_BLUE = "\033[38;2;8;70;250m"  // WMS_TAXONOMY 색상
+def ANSI_YELLOW = "\u001B[33m"
+def ANSI_GREEN = "\u001B[32m"
+def ANSI_CYAN = "\033[38;2;0;255;255m"
+def ANSI_RED = "\u001B[31m"
+def ANSI_ORANGE = "\033[38;2;255;149;0m"
+
+log.info """\
+ Usage:
+    nextflow run nf_scripts/${ANSI_BLUE}WMS_TAXONOMY_apptainer.nf${ANSI_RESET} --inputDir "\${filtered_reads_dir}" --metadata "\${metadata_file}" --sampleIDcolumn "\${column_number}" --profiler "\${taxonomy_tool}"
+
+${ANSI_BLUE}WMS_TAXONOMY : Taxonomic profiling of whole metagenome sequencing data${ANSI_RESET}
+=========================================================
+ ${ANSI_BLUE}Kraken2${ANSI_RESET}           : Fast taxonomic classification using k-mer matching
+ ${ANSI_BLUE}Bracken${ANSI_RESET}           : Abundance estimation from Kraken2 results
+ ${ANSI_BLUE}Sylph${ANSI_RESET}             : Fast and accurate taxonomic profiling
+
+${ANSI_RED}Required Parameters:${ANSI_RESET}
+------------------
+${ANSI_RED}--inputDir${ANSI_RESET}         : Directory containing quality filtered paired-end reads
+${ANSI_RED}--metadata${ANSI_RESET}         : CSV file with sample metadata (comma-separated format)
+${ANSI_RED}--sampleIDcolumn${ANSI_RESET}   : Column number in metadata file containing sample IDs
+${ANSI_RED}--profiler${ANSI_RESET}         : Taxonomic profiler to use (kraken2 or sylph)
+
+${ANSI_YELLOW}Optional Parameters:${ANSI_RESET}
+------------------
+${ANSI_YELLOW}--analysiscolumn${ANSI_RESET}   : Column number for statistical analysis grouping
+${ANSI_YELLOW}--kraken_method${ANSI_RESET}    : Kraken2 execution method (default: ${params.kraken_method})
+${ANSI_YELLOW}--confidence_filter${ANSI_RESET} : Confidence threshold for Kraken2 (default: ${params.confidence_filter})
+${ANSI_YELLOW}--relab_filter${ANSI_RESET}     : Relative abundance filter for Bracken (default: ${params.relab_filter})
+${ANSI_YELLOW}--sylph_abundance_type${ANSI_RESET} : Abundance type for Sylph (default: ${params.sylph_abundance_type})
+${ANSI_YELLOW}--cpus${ANSI_RESET}             : Number of CPUs to use (default: ${params.cpus})
+${ANSI_YELLOW}--outdir${ANSI_RESET}           : Output directory (default: ${params.outdir})
+
+${ANSI_CYAN}Output Files:${ANSI_RESET}
+------------------
+${ANSI_CYAN}- kraken2/${ANSI_RESET}          : Kraken2 classification results
+${ANSI_CYAN}- bracken/${ANSI_RESET}          : Bracken abundance estimates
+${ANSI_CYAN}- sylph/${ANSI_RESET}            : Sylph profiling results
+${ANSI_CYAN}- phyloseq/${ANSI_RESET}         : Phyloseq objects for R analysis
+${ANSI_CYAN}- stats_analysis/${ANSI_RESET}    : Statistical analysis results (if --analysiscolumn specified)
+
+Final output is a Phyloseq object that can be used with the ${ANSI_ORANGE}INTERACTIVE_TAXONOMY${ANSI_RESET} module for interactive visualization.
+
+"""
+.stripIndent(true)
+
+
+process kraken2_run{
+    publishDir "${params.outdir}/kraken2", mode: 'copy'
+    tag "kraken2  ${accession}"
+    cpus params.cpus
+    
+    input:
+    tuple val(accession), path(reads)
+
+    output:
+    val(accession)
+    path("${accession}_kraken2.report")
+
+    script:
+    def db_path = params.kraken_method == 'memory-mapping' ? "/dev/shm/kraken2_GTDB/" : "${params.db_baseDir}/kraken2_GTDBr220/"
+    def memory_mapping = params.kraken_method == 'memory-mapping' ? "--memory-mapping" : ""
+
+    """
+    kraken2 --db ${db_path} --output ${accession}_kraken2.out --report ${accession}_kraken2.report \
+    --confidence ${params.confidence_filter} --gzip-compressed --paired ${memory_mapping} \
+    --threads ${task.cpus} ${reads[0]} ${reads[1]}
+    """
+}
+    /*
+    if(params.kraken_method == 'default')
+    """
+    kraken2 --db ${params.db_baseDir}/kraken2_GTDBr220/ --output ${accession}_kraken2.out --report ${accession}_kraken2.report \
+    --confidence 0.25 --gzip-compressed --paired  \
+    --threads ${task.cpus}  ${reads[0]} ${reads[1]} 
+
+    """
+    else if (params.kraken_method == 'memory-mapping')
+    """
+    kraken2 --db /dev/shm/kraken2_GTDB/ --output ${accession}_kraken2.out --report ${accession}_kraken2.report \
+    --confidence 0.25 --gzip-compressed --paired  --memory-mapping \
+    --threads ${task.cpus}  ${reads[0]} ${reads[1]} 
+    """
+    
+}
+*/
+
+process bracken_run{
+    publishDir "${params.outdir}/bracken", mode: 'copy'
+    tag "bracken  ${accession}"
+    containerOptions {"--bind ${launchDir}:${launchDir}"}
+
+    input:
+    val(accession)
+    path(kraken_output)
+    output:
+    path "*"
+    //path("${accession}_bracken.out")
+    //awk -v sample=$sample '{if ($1 == sample "fastp_hg38_1") print $(NF - 2)}' ${params.multiqcFile}
+
+    script:
+    """
+    #ls /data1/leehg/OMD_pipeline/year3/WMS_TAXONOMY/read_filtered
+    ls ${launchDir}/results/metagenome/RAWREAD_QC/multiqc/multiqc_data/multiqc_general_stats.txt 
+    
+    len=\$(awk -v accession=${accession} -F"\\t" '{if (\$1 ~ accession "_fastp.*_1") print \$(NF -2)}' \
+    ${launchDir}/results/metagenome/RAWREAD_QC/multiqc/multiqc_data/multiqc_general_stats.txt )
+    read_length=0
+    if [ "\$len" -le 125 ]; then
+        read_length=100
+    elif [ "\$len" -le 175 ]; then
+        read_length=150
+    elif [ "\$len" -le 225 ]; then
+        read_length=200
+    elif [ "\$len" -le 275 ]; then
+        read_length=250    
+    else
+        read_length=300
+    fi
+    
+    /scratch/tools/microbiome_analysis/program/Bracken/bracken -d ${params.db_baseDir}/kraken2_GTDBr220/ \
+    -i ${kraken_output} -o ${accession}_bracken.out -r \${read_length} -l S 
+    # relative abundance filtering 
+    awk '\$NF >= ${params.relab_filter}' ${accession}_bracken.out > ${accession}_bracken.out.tmp
+    mv ${accession}_bracken.out.tmp ${accession}_bracken.out
+
+    """
+
+}
+
+process phyloseq_creation {
+    publishDir "${params.outdir}/phyloseq", mode: 'copy'
+    // below line is tmp . 
+
+    containerOptions {"--bind /data2/leehg/OMD3/Generated_pipeline/scratch/tools/microbiome_analysis/scripts:/scratch/tools/microbiome_analysis/scripts"}
+
+    input: 
+    path(bracken_files)
+    path(metadata)
+
+    output:
+    path("phyloseq_object.RDS")
+
+    //3 custome script : 2 for bracken relab data manage, 1 for phyloseq object creation 
+    //1 database information file : taxID to species of kraken database 
+    //   BrackentaxID_GTDBtaxa_completed.csv
+
+    script: 
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    python ${params.scripts_baseDir}/combine_bracken_outputs.py --files *bracken.out -o combined_bracken_out
+    python ${params.scripts_baseDir}/extract_frac_combined_bracken.py combined_bracken_out bracken_species_relab.tsv
+    sed -i 's/_bracken.out_frac//g' bracken_species_relab.tsv
+    
+    Rscript ${params.scripts_baseDir}/phyloseq_creation.R  bracken_species_relab.tsv  \
+    ${params.scripts_baseDir}/BrackentaxID_GTDBtaxa_completed.csv ${params.metadata} ${params.sampleIDcolumn}\
+    ./
+
+    """
+}
+
+
+process statistical_analysis {
+    publishDir "${params.outdir}/stats_analysis", mode: 'copy'
+    tag "stats_analysis"
+    when: params.analysiscolumn >= 0
+
+    input:
+    path(phyloseq_object)
+
+    output:
+    path "*" // Adjust output as necessary
+
+    script:
+    def adjusted_analysiscolumn = params.analysiscolumn -1 
+
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment 
+    Rscript ${params.scripts_baseDir}/phyloseq_WMS_taxa_analysis.R ${phyloseq_object} \
+    WMS_taxonomy_analysis ${adjusted_analysiscolumn}
+    """
+}
+
+process sylph_sketch_all {
+    publishDir "${params.outdir}/sylph", mode: 'copy'
+    tag "sylph_sketch_all"
+    cpus params.cpus
+    
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    path("*.paired.sylsp")
+    
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate sylph061    
+    sylph sketch -t ${task.cpus} \
+        -1 ${reads[0]} \
+        -2 ${reads[1]} \
+        -S ${sample_id} \
+        -c 200
+    
+    """
+}
+
+process sylph_process_all {
+    publishDir "${params.outdir}/sylph", mode: 'copy'
+    cpus params.cpus
+
+    input:
+    path('*')  
+    
+    output:
+    path("merged_sylph_species.tsv")
+    path("all.profile-sylph.tsv")
+    
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate sylph061    
+
+    # 1. Profiling using database 
+    sylph profile *.sylsp ${params.db_baseDir}/sylph/sylph_c200_gtdbr220.syldb \
+        -t ${task.cpus} \
+        -o all.profile-sylph.tsv
+
+    # 2. Convert to sylphmpa format
+    python ${params.scripts_baseDir}/sylph-utils/sylph_to_taxprof.py \
+        -s all.profile-sylph.tsv \
+        -m ${params.scripts_baseDir}/gtdbr220_taxonomy_list_TaxID.tsv
+
+    # 3. Merge sylphmpa files
+
+    python ${params.scripts_baseDir}/sylph-utils/merge_sylph_taxprof.py \
+        -o merged_sylphmpa.tsv \
+        --column ${params.sylph_abundance_type} \
+        *.sylphmpa
+
+    # 4. Convert to TaxID
+    python ${params.scripts_baseDir}/convert_species_TAXID_merged_syhph_mpa.py \
+        -m ${params.scripts_baseDir}/gtdbr220_taxonomy_list_TaxID.tsv \
+        -i merged_sylphmpa.tsv \
+        -o merged_sylph_species.tsv
+    """
+}
+
+
+process phyloseq_creation_sylph {
+    publishDir "${params.outdir}/phyloseq", mode: 'copy'
+    
+    input:
+    path(merged_species)
+    path(metadata)
+    
+    output:
+    path("phyloseq_object_sylph.RDS")
+    
+    script:
+    """
+    eval "\$(micromamba shell hook --shell bash)"
+    micromamba activate R432_environment
+    
+    Rscript ${params.scripts_baseDir}/phyloseq_creation.R \
+        ${merged_species} \
+        ${params.scripts_baseDir}/BrackentaxID_GTDBtaxa_completed.csv \
+        ${metadata} \
+        ${params.sampleIDcolumn} \
+        ./
+        mv phyloseq_object.RDS phyloseq_object_sylph.RDS
+    """
+}
+
+
+
+
+workflow{
+    reads_ch = Channel.fromFilePairs("${params.inputDir}/*_{1,2}.{fastq,fq}{.gz,}", checkIfExists: true)
+                .map { accession, reads -> 
+                    // Split the accession name to remove the '_fastp' part
+                    //def sam_accession = accession.split('_')[0]
+                    def sam_accession = accession.replaceAll(/_fastp.*$/, '')
+                    tuple(sam_accession, reads) 
+                }                
+    metadata_ch = Channel.fromPath("${params.metadata}")
+
+    reads_ch.view()
+
+
+    if (params.profiler == 'kraken2') {
+        kraken2_result = kraken2_run(reads_ch)
+        bracken_result = bracken_run(kraken2_result)
+        phyloseq_input = bracken_result.collect()
+        phyloseq_ch = phyloseq_creation(phyloseq_input, metadata_ch)
+    }
+    else if (params.profiler == 'sylph') {
+        sylph_sketches = sylph_sketch_all(reads_ch)
+        sylph_results = sylph_process_all(sylph_sketches.collect())
+        phyloseq_ch = phyloseq_creation_sylph(sylph_results[0], metadata_ch)
+    }
+    
+
+
+    //phyloseq_ch = phyloseq_creation(phyloseq_input,metadata_ch)
+    if (params.analysiscolumn > 0) {
+        statistical_analysis(phyloseq_ch)
+    }
+    //reads_ch = Channel.fromFilePairs("", checkIfExists : true )
+}

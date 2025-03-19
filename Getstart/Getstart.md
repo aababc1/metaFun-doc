@@ -67,8 +67,14 @@ metaFun provides two main analysis workflows:
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#FF9300">ASSEMBLY_BINNING</span> → <span style="color:#00B050">BIN_ASSESSMENT</span> → <span style="color:#00B050">GENOME_</span><span style="color:#4E95D9">SELECTOR</span> → <span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span> → <span style="color:#4E95D9">INTERACTIVE_COMPARATIVE</span>
 
 #### Read-based analysis path:
+  For taxonomic composition 
+
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#0846FA">INTERACTIVE_TAXONOMY</span> 
+
+For functional annotation 
+
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#7030A0">WMS_FUNCTION</span>
+
 You can execute each module of metaFun using the following syntax:
 
 

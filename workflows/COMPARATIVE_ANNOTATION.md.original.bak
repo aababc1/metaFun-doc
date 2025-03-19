@@ -1,12 +1,12 @@
 (COMPARATIVE_ANNOTATION_description)=
 
 
-# <span style="color:#7FBDFF">COMPARATIVE_ANNOTATION</span>
+# <span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span>
 
 <img src="../_static/metafun5_sky.png" style="height:200px; width:auto; float:right; margin-left:10px;" />
 This Nextflow script implements a workflow for comparative annotation of metagenome-assembled genomes (MAGs).
 
-# <span style="color:#7FBDFF">COMPARATIVE_ANNOTATION</span> Workflow
+# <span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span> Workflow
 
 ## Overview
 
@@ -40,7 +40,7 @@ This Nextflow script implements a comprehensive and flexible comparative genomic
 | `inputDir` | Input directory for genome files | `"${launchDir}/results/metagenome/<span style="color:#00B050">BIN_ASSESSMENT</span>/bins_quality_passed"` |
 | `metadata` | Path to metadata file | `"${launchDir}/selected_metadata.csv"` |
 | `metacol` | Column number in metadata to use | Required (no default) |
-| `outdir` | Output directory | `"${launchDir}/results/metagenome/<span style="color:#7FBDFF">COMPARATIVE_ANNOTATION</span>/${current_time}"` |
+| `outdir` | Output directory | `"${launchDir}/results/metagenome/<span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span>/${current_time}"` |
 | `cpus` | Number of CPUs to use | 40 |
 | `pan_identity` | PPanGGOLiN identity threshold | 0.8 |
 | `pan_coverage` | PPanGGOLiN coverage threshold | 0.8 |
@@ -99,7 +99,7 @@ Each visualization process creates separate outputs for gene presence/absence (P
 ## Usage
 
 ```bash
-nextflow run <span style="color:#7FBDFF">COMPARATIVE_ANNOTATION</span>_apptainer.nf --metadata [path_to_metadata] --metacol [metadata_column] [additional_options]
+nextflow run <span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span>_apptainer.nf --metadata [path_to_metadata] --metacol [metadata_column] [additional_options]
 ```
 
 ## Requirements
@@ -121,5 +121,5 @@ For detailed information on parameters and usage, run the script with the `--hel
 [Check out the HTML Content!](/_static/pcoa_plot_interactive.html)
 
 (pcoa_plot_permanova)=
-[<span style="color:#7FBDFF">COMPARATIVE_ANNOTATION</span> result viewer](http://165.132.36.43/shiny/).
+[<span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span> result viewer](http://165.132.36.43/shiny/).
 <iframe src="http://165.132.36.43/shiny/" style="border: 2px solid gray"; width="1100px" ; height="900px"></iframe>
