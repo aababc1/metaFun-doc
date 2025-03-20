@@ -74,7 +74,7 @@ extensions = [
     'sphinx.ext.doctest',
     'sphinx.ext.viewcode',
     'sphinx.ext.autosectionlabel',
-    'sphinx_togglebutton'
+    'sphinx_togglebutton',
 
     ]
 
