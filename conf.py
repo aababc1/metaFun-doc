@@ -30,6 +30,22 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
+latex_engine = 'xelatex'  # 또는 'lualatex' - 유니코드/CJK 지원이 좋음
+
+latex_elements = {
+    'papersize': 'a4paper',
+    'pointsize': '10pt',
+    # 한글 글꼴 설정을 위한 preamble
+    'preamble': r'''
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setmainfont{Times New Roman}  % 기본 영문 글꼴
+\setCJKmainfont{Apple SD Gothic Neo}  % 한글 글꼴
+''',
+    'figure_align': 'htbp',
+}
+
+
 html_favicon = "_static/favicon_metafun.png"
 
 html_theme = 'sphinx_book_theme'
