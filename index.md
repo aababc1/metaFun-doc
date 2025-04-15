@@ -45,18 +45,17 @@ Birdeye view of metaFun pipeline. This pipeline is comprised of six analytical m
 
 1. **Install Prerequisites (conda, miniconda, or mamba)**
    ```bash
-   # Install miniconda or mamba
-   wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-   bash Miniconda3-latest-Linux-x86_64.sh
+    # Suppose you are using Linux OS.
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    # you can indicate the installation path by replacing -p $PATH. $PATH is the base directory of your conda installation.
+    bash miniconda.sh -b -u -p ~/miniconda3
+    rm  miniconda.sh
    ```
 
 2. **Install metaFun**
    ```bash
    # make  metafun environment
-   git clone https://github.com/aababc1/metaFun.git
-   cd metaFun
-   
-   # Create environment
+
    conda create -n metafun bioconda::metafun
    conda activate metafun
    ```
@@ -213,4 +212,12 @@ workflows/WMS_FUNCTION.md
 :maxdepth: 2
 :caption: Guide for interactive visualization 
 
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: metaFun in KBDS
+
+Korean/metafun_in_KBDS.md
+Korean/index.md
 ```

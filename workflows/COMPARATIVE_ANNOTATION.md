@@ -214,16 +214,6 @@ The module generates various visualizations including:
 <iframe src="../_static/pcoa_plot_interactive.html" width="100%" height="800px%"></iframe>
 
 
-```{figure} ../images/comp_ann_example.png
----
-width: 100%
-figclass: margin-caption
-alt: COMPARATIVE_ANNOTATION_example
-name: comp_ann_example
-align: middle
----
-```
-
 ## Key Processes in <span style="color:#7FBDFF">COMPARATIVE_ANNOTATION</span> Module
 
 | Process | Purpose | Input | Output |
