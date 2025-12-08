@@ -76,6 +76,9 @@ Birdeye view of metaFun pipeline. This pipeline is comprised of six analytical m
 > 1. [<span style="color:#0846FA">WMS_TAXONOMY</span>](WMS_TAXONOMY)
 > 1. [<span style="color:#0846FA">INTERACTIVE_TAXONOMY</span>](INTERACTIVE_WMS_TAXONOMY)
 > 1. [<span style="color:#7030A0">WMS_FUNCTION</span>](WMS_FUNCTION)
+> 1. [<span style="color:#2FA4E7">WMS_STRAIN</span>](WMS_STRAIN)
+> 1. [<span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>](INTERACTIVE_STRAIN)
+> 1. [<span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>](INTERACTIVE_NETWORK)
 
 ```{raw} html
 <iframe src="https://dash-mag.onrender.com" width="100%" height="1200px"></iframe>
@@ -206,6 +209,9 @@ workflows/INTERACTIVE_COMPARATIVE.md
 workflows/WMS_TAXONOMY.md
 workflows/INTERACTIVE_TAXONOMY.md
 workflows/WMS_FUNCTION.md
+workflows/WMS_STRAIN.md
+workflows/INTERACTIVE_STRAIN.md
+workflows/INTERACTIVE_NETWORK.md
 ```
 
 ```{toctree}
