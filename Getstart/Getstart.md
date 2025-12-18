@@ -67,13 +67,21 @@ metaFun provides two main analysis workflows:
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#FF9300">ASSEMBLY_BINNING</span> → <span style="color:#00B050">BIN_ASSESSMENT</span> → <span style="color:#00B050">GENOME_</span><span style="color:#4E95D9">SELECTOR</span> → <span style="color:#4E95D9">COMPARATIVE_ANNOTATION</span> → <span style="color:#4E95D9">INTERACTIVE_COMPARATIVE</span>
 
 #### Read-based analysis path:
-  For taxonomic composition 
+  For taxonomic composition
 
-<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#0846FA">INTERACTIVE_TAXONOMY</span> 
+<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#0846FA">INTERACTIVE_TAXONOMY</span>
 
-For functional annotation 
+For functional annotation
 
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#7030A0">WMS_FUNCTION</span>
+
+For strain-level analysis
+
+<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#2FA4E7">WMS_STRAIN</span> → <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>
+
+For network analysis
+
+<span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>
 
 You can execute each module of metaFun using the following syntax:
 
@@ -186,6 +194,46 @@ metafun -module INTERACTIVE_TAXONOMY -i results/metagenome/WMS_TAXONOMY
 ```{code-block} bash
 :caption: Example
 metafun -module WMS_FUNCTION -i filtered_reads/ -m metadata.csv -s 1 -a 2
+```
+
+## <span style="color:#2FA4E7">WMS_STRAIN</span>: Strain-level microdiversity analysis
+
+**Required:** -i <inputDir> --phyloseq_object <phyloseq_RDS>
+
+```{admonition} Requires WMS_TAXONOMY output
+:class: note
+
+This module requires a phyloseq RDS object from WMS_TAXONOMY for selecting prevalent taxa to analyze at strain level.
+```
+
+```{code-block} bash
+:caption: Example
+metafun -module WMS_STRAIN -i results/metagenome/RAWREAD_QC/read_filtered \
+    --phyloseq_object results/metagenome/WMS_TAXONOMY/phyloseq/phyloseq_object_sylph.RDS
+```
+
+## <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>: Interactive strain diversity analysis
+
+**Required:** -i <inputDir>
+
+```{code-block} bash
+:caption: Example
+metafun -module INTERACTIVE_STRAIN -i results/metagenome/WMS_STRAIN
+```
+
+## <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>: Interactive microbial network analysis
+
+**Required:** -i <phyloseq_RDS>
+
+```{admonition} Requires WMS_TAXONOMY output
+:class: note
+
+This module requires a phyloseq RDS object from WMS_TAXONOMY for constructing co-occurrence networks.
+```
+
+```{code-block} bash
+:caption: Example
+metafun -module INTERACTIVE_NETWORK -i results/metagenome/WMS_TAXONOMY/phyloseq/phyloseq_object_sylph.RDS
 ```
 
 ## DOWNLOAD_DB: Download required databases

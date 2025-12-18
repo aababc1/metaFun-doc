@@ -38,7 +38,7 @@ alt: metafun_pipeline
 name: myfig5
 align: middle
 ---
-Birdeye view of metaFun pipeline. This pipeline is comprised of six analytical modules and two interactive modules. 
+Birdeye view of metaFun pipeline. This pipeline is comprised of seven analytical modules and four interactive modules. 
 ```
 
 ## Quick Start 
