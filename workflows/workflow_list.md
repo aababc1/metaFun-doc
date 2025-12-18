@@ -25,8 +25,20 @@ This workflow generatereal quality controlled and host contimantion eliminated  
 (WMS_TAXONOMY)=
 ## [WMS_TAXONOMY](WMS_TAXONOMY_description)
 
-(WMS_FUNCTION)= 
+(WMS_FUNCTION)=
 ## [WMS_FUNCTION](WMS_FUNCTION_description)
+
+(WMS_STRAIN)=
+## [WMS_STRAIN](WMS_STRAIN_description)
+
+(INTERACTIVE_TAXONOMY)=
+## [INTERACTIVE_TAXONOMY](INTERACTIVE_TAXONOMY_description)
+
+(INTERACTIVE_STRAIN)=
+## [INTERACTIVE_STRAIN](INTERACTIVE_STRAIN_description)
+
+(INTERACTIVE_NETWORK)=
+## [INTERACTIVE_NETWORK](INTERACTIVE_NETWORK_description)
 
 # this is RAWREAD_QC description page. 
 

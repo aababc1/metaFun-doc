@@ -49,7 +49,22 @@ metaFun은 다양한 분석 모듈로 구성된 메타게놈 분석 파이프라
 - **주요 도구**: HUMAnN3, MetaPhlAn
 - **KBDS 지원**: ✅ 지원됨
 
-### 10. <span style="color:#7030A0">DOWNLOAD_DB</span> (독립 모듈)
+### 10. <span style="color:#2FA4E7">WMS_STRAIN</span>
+- **기능**: InStrain을 사용한 균주 수준 미세다양성 분석
+- **주요 도구**: InStrain, Bowtie2, Prodigal, eggNOG-mapper
+- **KBDS 지원**: ✅ 지원됨
+
+### 11. <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>
+- **기능**: 균주 수준 다양성 결과의 대화형 분석 및 시각화
+- **주요 도구**: Shiny, R 패키지
+- **KBDS 지원**: ❌ 지원되지 않음 (실시간 분석모듈로 개인 환경에서 사용 권장)
+
+### 12. <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>
+- **기능**: 미생물 공존 네트워크 분석 및 대화형 시각화
+- **주요 도구**: Shiny, FastSpar, FlashWeave, igraph, brainGraph
+- **KBDS 지원**: ❌ 지원되지 않음 (실시간 분석모듈로 개인 환경에서 사용 권장)
+
+### 13. <span style="color:#7030A0">DOWNLOAD_DB</span> (독립 모듈)
 - **기능**: 분석에 필요한 데이터베이스 다운로드
 - **주요 데이터베이스**: Kraken2, GTDB, HUMAnN3, UniRef90
 - **KBDS 지원**: ❌ 지원되지 않음 (KBDS에는 필요한 데이터베이스가 이미 설치됨)
@@ -98,7 +113,11 @@ metafun -module INTERACTIVE_COMPARATIVE -i /path/to/downloaded/comparative_annot
 RAWREAD_QC → ASSEMBLY_BINNING → BIN_ASSESSMENT → GENOME_SELECTOR → COMPARATIVE_ANNOTATION → INTERACTIVE_COMPARATIVE
                               ↘                                   ↗
                  RAWREAD_QC → WMS_TAXONOMY → INTERACTIVE_TAXONOMY
+                            ↘            ↘
+                             WMS_STRAIN → INTERACTIVE_STRAIN
+                            ↘
+                             INTERACTIVE_NETWORK
                  RAWREAD_QC → WMS_FUNCTION
 ```
 
-KBDS 시스템에서는 GENOME_SELECTOR, INTERACTIVE_COMPARATIVE, INTERACTIVE_TAXONOMY 모듈을 제외한 나머지 모듈을 순차적으로 실행할 수 있습니다.
+KBDS 시스템에서는 GENOME_SELECTOR, INTERACTIVE_COMPARATIVE, INTERACTIVE_TAXONOMY, INTERACTIVE_STRAIN, INTERACTIVE_NETWORK 모듈을 제외한 나머지 모듈을 순차적으로 실행할 수 있습니다.
