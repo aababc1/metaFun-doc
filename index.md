@@ -30,7 +30,7 @@ metaFun is implemented in Nextflow with apptainer. You can easily run this pipel
 ## Introduction   
 metaFun is aimed at agile and scalable generation of metagenome assembled genomes and taxonomic profiling with statistical analysis. Using user interested genomes with metadata, this pipeline enables fast comprative genomic analysis and functional annotation. 
 
-```{figure} images/Picture1.png
+```{figure} images/pipeline_flowchart.renew.png
 ---
 width: 100%
 figclass: margin-caption
@@ -38,7 +38,7 @@ alt: metafun_pipeline
 name: myfig5
 align: middle
 ---
-Birdeye view of metaFun pipeline. This pipeline is comprised of six analytical modules and two interactive modules. 
+Birdeye view of metaFun pipeline. This pipeline is comprised of seven analytical modules and four interactive modules. 
 ```
 
 ## Quick Start 
