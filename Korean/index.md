@@ -30,7 +30,7 @@ metaFun은 Nextflow와 apptainer로 구현되었습니다. conda 또는 mamba를
 ## 소개
 metaFun은 메타게놈 어셈블 게놈(MAG)의 빠르고 확장 가능한 생성과 통계 분석을 포함한 분류학적 프로파일링을 목표로 합니다. 사용자가 관심 있는 게놈과 메타데이터를 사용하여 빠른 비교 유전체 분석과 기능 주석을 가능하게 합니다.
 
-```{figure} ../images/Picture1.png
+```{figure} ../images/pipeline_flowchart.renew.png
 ---
 width: 100%
 figclass: margin-caption
@@ -38,7 +38,7 @@ alt: metafun_pipeline
 name: myfig5
 align: middle
 ---
-metaFun 파이프라인의 조망도. 이 파이프라인은 여섯 개의 분석 모듈과 두 개의 인터랙티브 모듈로 구성되어 있습니다.
+metaFun 파이프라인의 조망도. 이 파이프라인은 일곱 개의 분석 모듈과 네 개의 인터랙티브 모듈로 구성되어 있습니다.
 ```
 
 ## 빠른 시작
@@ -76,6 +76,9 @@ metaFun 파이프라인의 조망도. 이 파이프라인은 여섯 개의 분�
 > 1. [<span style="color:#0846FA">WMS_TAXONOMY</span>](../WMS_TAXONOMY)
 > 1. [<span style="color:#0846FA">INTERACTIVE_TAXONOMY</span>](../INTERACTIVE_WMS_TAXONOMY)
 > 1. [<span style="color:#7030A0">WMS_FUNCTION</span>](../WMS_FUNCTION)
+> 1. [<span style="color:#2FA4E7">WMS_STRAIN</span>](../WMS_STRAIN)
+> 1. [<span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>](../INTERACTIVE_STRAIN)
+> 1. [<span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>](../INTERACTIVE_NETWORK)
 
 ```{raw} html
 <iframe src="https://dash-mag.onrender.com" width="100%" height="1200px"></iframe>
@@ -149,6 +152,9 @@ workflows/INTERACTIVE_COMPARATIVE.md
 workflows/WMS_TAXONOMY.md
 workflows/INTERACTIVE_TAXONOMY.md
 workflows/WMS_FUNCTION.md
+workflows/WMS_STRAIN.md
+workflows/INTERACTIVE_STRAIN.md
+workflows/INTERACTIVE_NETWORK.md
 ```
 
 ```{toctree}

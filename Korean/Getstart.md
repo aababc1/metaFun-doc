@@ -69,11 +69,19 @@ metaFun은 두 가지 주요 분석 워크플로우를 제공합니다:
 #### 리드 기반 분석 경로:
   분류학적 구성을 위한 경로
 
-<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#0846FA">INTERACTIVE_TAXONOMY</span> 
+<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#0846FA">INTERACTIVE_TAXONOMY</span>
 
-기능 주석을 위한 경로 
+기능 주석을 위한 경로
 
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#7030A0">WMS_FUNCTION</span>
+
+균주 수준 분석을 위한 경로
+
+<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#2FA4E7">WMS_STRAIN</span> → <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>
+
+네트워크 분석을 위한 경로
+
+<span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>
 
 다음 구문을 사용하여 metaFun의 각 모듈을 실행할 수 있습니다:
 
@@ -186,6 +194,46 @@ metafun -module INTERACTIVE_TAXONOMY -i results/metagenome/WMS_TAXONOMY
 ```{code-block} bash
 :caption: 예시
 metafun -module WMS_FUNCTION -i filtered_reads/ -m metadata.csv -s 1 -a 2
+```
+
+## <span style="color:#2FA4E7">WMS_STRAIN</span>: 균주 수준 미세다양성 분석
+
+**필수:** -i <inputDir> --phyloseq_object <phyloseq_RDS>
+
+```{admonition} WMS_TAXONOMY 출력 필요
+:class: note
+
+이 모듈은 균주 수준에서 분석할 우세 분류군을 선택하기 위해 WMS_TAXONOMY의 phyloseq RDS 객체가 필요합니다.
+```
+
+```{code-block} bash
+:caption: 예시
+metafun -module WMS_STRAIN -i results/metagenome/RAWREAD_QC/read_filtered \
+    --phyloseq_object results/metagenome/WMS_TAXONOMY/phyloseq/phyloseq_object_sylph.RDS
+```
+
+## <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>: 대화형 균주 다양성 분석
+
+**필수:** -i <inputDir>
+
+```{code-block} bash
+:caption: 예시
+metafun -module INTERACTIVE_STRAIN -i results/metagenome/WMS_STRAIN
+```
+
+## <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>: 대화형 미생물 네트워크 분석
+
+**필수:** -i <phyloseq_RDS>
+
+```{admonition} WMS_TAXONOMY 출력 필요
+:class: note
+
+이 모듈은 공존 네트워크 구축을 위해 WMS_TAXONOMY의 phyloseq RDS 객체가 필요합니다.
+```
+
+```{code-block} bash
+:caption: 예시
+metafun -module INTERACTIVE_NETWORK -i results/metagenome/WMS_TAXONOMY/phyloseq/phyloseq_object_sylph.RDS
 ```
 
 ## DOWNLOAD_DB: 필요한 데이터베이스 다운로드
