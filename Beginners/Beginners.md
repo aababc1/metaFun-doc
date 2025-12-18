@@ -16,6 +16,10 @@ metaFun is organized into modules that can be run independently or as part of a 
 
 <span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#7030A0">WMS_FUNCTION</span>
 
+<span style="color:#FF0000">RAWREAD_QC</span> → <span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#2FA4E7">WMS_STRAIN</span> → <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>
+
+<span style="color:#0846FA">WMS_TAXONOMY</span> → <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>
+
 ## Module Details
 
 ### <span style="color:#FF0000">RAWREAD_QC</span>
@@ -218,6 +222,75 @@ metaFun is organized into modules that can be run independently or as part of a 
 **Workflow Notes**:
 - Takes filtered reads from RAWREAD_QC as input
 - Final module in the read-based functional analysis path
+
+### <span style="color:#2FA4E7">WMS_STRAIN</span>
+
+**Purpose**: Strain-level microdiversity analysis using InStrain
+
+**Inputs**:
+- Filtered reads from RAWREAD_QC
+- Phyloseq object from WMS_TAXONOMY (for selecting prevalent taxa)
+
+**Outputs**:
+- Nucleotide diversity metrics per genome in `instrain_profiles/` directory
+- pN/pS ratio tables for selection pressure analysis
+- Strain comparison matrices (popANI, conANI)
+- Preprocessed RDS files for INTERACTIVE_STRAIN
+
+**Key Parameters**:
+- `-i, --input_dir`: Input directory containing filtered reads (required)
+- `--phyloseq_object`: Phyloseq RDS file from WMS_TAXONOMY (required)
+- `-m, --metadata`: Path to metadata file (optional, extracted from phyloseq if not provided)
+- `-s, --sampleIDcolumn`: Column number for sample IDs (default: 1)
+- `--prevalence_threshold`: Minimum % of samples for prevalence filtering (default: 5)
+- `--min_abundance`: Minimum relative abundance threshold (default: 0.001)
+- `-p, --cpus`: Number of CPUs to use
+
+**Workflow Notes**:
+- Requires phyloseq output from WMS_TAXONOMY for selecting prevalent taxa
+- Output is used by INTERACTIVE_STRAIN module
+
+### <span style="color:#2FA4E7">INTERACTIVE_STRAIN</span>
+
+**Purpose**: Interactive exploration of strain-level diversity results
+
+**Inputs**:
+- Results directory from WMS_STRAIN containing InStrain profiles
+
+**Outputs**:
+- Interactive visualization through Shiny web interface
+- Exported figures and statistical analysis results
+
+**Key Parameters**:
+- `-i, --input`: Input directory with WMS_STRAIN results (required)
+- `-m, --metadata`: Additional metadata file (optional)
+- `-p, --port`: Port number for web interface (default: 8050)
+
+**Workflow Notes**:
+- Provides interactive dashboards for exploring nucleotide diversity, pN/pS ratios, and strain sharing
+- No further modules depend on its output
+
+### <span style="color:#2FA4E7">INTERACTIVE_NETWORK</span>
+
+**Purpose**: Interactive microbial co-occurrence network analysis
+
+**Inputs**:
+- Phyloseq RDS object from WMS_TAXONOMY
+
+**Outputs**:
+- Interactive network visualizations
+- Network comparison statistics across sample groups
+- Node centrality and influential taxa rankings
+- Exportable figures and data tables
+
+**Key Parameters**:
+- `-i, --input`: Phyloseq RDS file from WMS_TAXONOMY (required)
+- `-p, --port`: Port number for web interface (default: 8050)
+
+**Workflow Notes**:
+- Supports network inference using FastSpar (SparCC) or FlashWeave
+- Enables group-wise network comparison for different conditions
+- No further modules depend on its output
 
 ## Tips for Beginners
 
